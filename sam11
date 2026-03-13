@@ -73,7 +73,7 @@ htfCandTF_p2 = enable_all_toggles and enable_auto_htf ? auto_map_tf_p2(timeframe
 // ~~ HTF Error Message {
 tfs = str.tonumber(htfCandTF)
 if str.tostring(htfCandTF) == "1D"
-tfs := 1440 
+tfs := 1440
 error = str.tonumber(timeframe.period)>=tfs
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 // ~~ UDT {
@@ -81,7 +81,7 @@ type HTF
 array<box> candle
 array<line> wickH
 array<line> wickL
-array<float> hl  
+array<float> hl
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 // ~~ Variables {
 b = bar_index
@@ -190,7 +190,7 @@ RangeHigh  = line.new(b,candle.hl.max(),b+numb*4+loc+2,candle.hl.max(),color=hig
 RangeLow   = line.new(b,candle.hl.min(),b+numb*4+loc+2,candle.hl.min(),color=low_col,extend=extend.none)
 (RangeHigh[1]).delete()
 (RangeLow[1]).delete()
-if show_range and Mid    
+if show_range and Mid
 RangeMid = line.new(b,math.avg(candle.hl.max(),candle.hl.min()),b+numb*4+loc+2,math.avg(candle.hl.max(),candle.hl.min()),color=mid_col,extend=extend.none)
 (RangeMid[1]).delete()
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
@@ -293,7 +293,7 @@ alertCISDBearish    = input.bool(true, title = "CISD Bearish Break", inline="6",
 alertCISDBearishTxt = input.string("CISD Bearish Break!", title="", inline="6", group="Alerts")
 // --
 // ----------------------------------------------------
-// Functions 
+// Functions
 // ----------------------------------------------------
 tf_multi(tf) =>
 ts = timeframe.in_seconds("")
@@ -309,7 +309,7 @@ a = array.shift(_array)
 box.delete(a)
 remove_mitigated_lines(_array, _hl) =>
 m = false
-if array.size(_array) > 0 and removeMitigated        
+if array.size(_array) > 0 and removeMitigated
 for i = array.size(_array) - 1 to 0 by 1
 l = array.get(_array, i)
 hh = _candleType == "Close" ? close[1] : high
@@ -324,9 +324,9 @@ if _hl == "Low" and ll < line.get_y1(l)
 array.remove(_array, i)
 if mitiOptions == "Show"
 line.new(line.get_x1(l),line.get_y1(l),time,line.get_y1(l), xloc=xloc.bar_time, color = color.new(lowLineColor, 70))
-line.delete(l) 
-m := true  
-display_limit_line(_array) 
+line.delete(l)
+m := true
+display_limit_line(_array)
 m
 remove_mitigated_boxes(_array, _hl) =>
 m = false
@@ -347,7 +347,7 @@ if mitiOptions == "Show"
 box.new(box.get_left(l),box.get_top(l),time,box.get_bottom(l), xloc=xloc.bar_time, bgcolor = color.new(lowBoxBgColor, 90), border_color = color.new(lowBoxBorderColor, 90), border_style = lowLineStyle)
 box.delete(l)
 m := true
-display_limit_box(_array) 
+display_limit_box(_array)
 m
 extend_line_to_current(lineArray) =>
 if array.size(lineArray) > 0
@@ -364,7 +364,7 @@ box.set_right(b, timeExt)
 // ----------------------------------------------------
 // Current TimeFrame
 // ----------------------------------------------------
-// Varibles 
+// Varibles
 // Lines
 var highLineArray = array.new_line()
 var lowLineArray = array.new_line()
@@ -381,7 +381,7 @@ if displayStyle == "Lines"
 array.push(highLineArray, line.new(time[rightBars+1],high[rightBars+1],time[+1],high[rightBars+1],color = highLineColor, style=highLineStyle, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidth))
 else
 y1 = math.max(open[rightBars+1], close[rightBars+1])
-array.push(highBoxArray, box.new(time[rightBars+1],high[rightBars+1],time[+1],y1,bgcolor = highBoxBgColor, border_color=highBoxBorderColor, xloc=xloc.bar_time, border_style = highLineStyle, extend=extentionMax?extend.right:extend.none, border_width = lineWidth))        
+array.push(highBoxArray, box.new(time[rightBars+1],high[rightBars+1],time[+1],y1,bgcolor = highBoxBgColor, border_color=highBoxBorderColor, xloc=xloc.bar_time, border_style = highLineStyle, extend=extentionMax?extend.right:extend.none, border_width = lineWidth))
 if pivotLow
 if displayStyle == "Lines"
 array.push(lowLineArray, line.new(time[rightBars+1],low[rightBars+1],time[+1],low[rightBars+1],color = lowLineColor, style=lowLineStyle, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidth))
@@ -411,7 +411,7 @@ alert(alertNewLowTxt, alert.freq_once_per_bar)
 // ----------------------------------------------------
 // Higher TimeFrame
 // ----------------------------------------------------
-// Varibles 
+// Varibles
 // Lines
 var highLineArrayHTF = array.new_line()
 var lowLineArrayHTF = array.new_line()
@@ -431,7 +431,7 @@ if displayStyle == "Lines"
 array.push(highLineArrayHTF, line.new(_time[dis],_high[dis],_time[+1],_high[dis],color = highLineColorHTF, style=highLineStyleHTF, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidthHTF))
 else
 y1 = math.max(_open[dis], _close[dis])
-array.push(highBoxArrayHTF, box.new(_time[dis],_high[dis],_time[+1],y1,bgcolor = highBoxBgColorHTF, border_color=highBoxBorderColorHTF, xloc=xloc.bar_time, border_style = highLineStyleHTF, extend=extentionMax?extend.right:extend.none, border_width = lineWidthHTF))  
+array.push(highBoxArrayHTF, box.new(_time[dis],_high[dis],_time[+1],y1,bgcolor = highBoxBgColorHTF, border_color=highBoxBorderColorHTF, xloc=xloc.bar_time, border_style = highLineStyleHTF, extend=extentionMax?extend.right:extend.none, border_width = lineWidthHTF))
 if pivotLowHTF
 if displayStyle == "Lines"
 array.push(lowLineArrayHTF, line.new(_time[dis],_low[dis],_time[+1],_low[dis],color = lowLineColorHTF, style=lowLineStyleHTF, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidthHTF))
@@ -538,7 +538,7 @@ cisd_bearishBreakIndex    := bar_index
 // Red candle with higher open than current bottom ├óΓÇáΓÇÖ shift anchor to that open
 if (close < open) and (open > cisd_potentialBottomPrice)
 cisd_potentialBottomPrice := open
-cisd_bearishBreakIndex    := bar_index     
+cisd_bearishBreakIndex    := bar_index
 if cisd_isBearishPullback
 // New higher open ├óΓÇáΓÇÖ update top anchor
 if open > cisd_potentialTopPrice
@@ -547,7 +547,7 @@ cisd_bullishBreakIndex := bar_index
 // Green candle with lower open than current top ├óΓÇáΓÇÖ shift anchor to that open
 if (close > open) and open < cisd_potentialTopPrice
 cisd_potentialTopPrice := open
-cisd_bullishBreakIndex := bar_index      
+cisd_bullishBreakIndex := bar_index
 //========================
 // Structure Updates - Bearish Break (BODY ONLY)
 //========================
@@ -682,7 +682,7 @@ lqFC = input.color(color.new(#787b86, 73), '', inline = 'FL', group = lqGR)
 //-----------------------------------------------------------------------------}
 // User Defined Types
 //-----------------------------------------------------------------------------{
-// @type        bar properties with their values 
+// @type        bar properties with their values
 //
 // @field h     (float) high price of the bar
 // @field l     (float) low price of the bar
@@ -705,13 +705,13 @@ per = show_voids and (mode == 'Present' ? last_bar_index - lux_b.i <= back : tru
 atr = ta.atr(144) * lqTH
 if per
 bull = (lux_b.l - lux_b.h[2]) > atr and lux_b.l > lux_b.h[2] and lux_b.c[1] > lux_b.h[2]
-if bull 
+if bull
 lq_len = 13
-if bull[1] 
+if bull[1]
 st = math.abs(lux_b.l - lux_b.l[1]) / lq_len
 for i = 0 to lq_len - 1
 array.push(lqV, box.new(lux_b.i - 2, lux_b.l[1] + (i + 1) * st, lux_b.i, lux_b.l[1] + i * st, na, bgcolor = lqBC ))
-else   
+else
 st = math.abs(lux_b.l - lux_b.h[2]) / lq_len
 for i = 0 to lq_len - 1
 if lqTX and i == 0
@@ -779,7 +779,7 @@ var float y1 = na
 var float sym_y1 = na
 var int x1 = na
 var smt = 0
-if y2 != y2[1] and sym_y2 != sym_y2[1] 
+if y2 != y2[1] and sym_y2 != sym_y2[1]
 //Test for SMT
 if (y2 - y1) * (sym_y2 - sym_y1) < 0
 line.new(n[length], y2, x1, y1, color = css)
@@ -787,7 +787,7 @@ smt += 1
 sym_y1 := sym_y2
 y1 := y2
 x1 := n[length]
-else if (ph and y2 > y2[1]) or (not ph and y2 < y2[1]) 
+else if (ph and y2 > y2[1]) or (not ph and y2 < y2[1])
 sym_y1 := na
 y1 := y2
 x1 := n[length]
@@ -906,10 +906,10 @@ int   lowTime    = BasicVisibleChart.lowBarTime()
 int   leftTime   = math.min(highTime, lowTime)
 int   rightTime  = math.max(highTime, lowTime)
 bool  isBull     = lowTime < highTime
-// Function to manage fib lines. It declares fib lines and label the first time it is called, then sets their properties on subsequent calls. 
-fibLine(series color fibColor, series float fibLevel, bool _showPriceLabels) => 
+// Function to manage fib lines. It declares fib lines and label the first time it is called, then sets their properties on subsequent calls.
+fibLine(series color fibColor, series float fibLevel, bool _showPriceLabels) =>
 float fibRatio = 1-(fibLevel / 100)
-float fibPrice = isBull ? chartLow  + ((chartHigh - chartLow) * fibRatio) : 
+float fibPrice = isBull ? chartLow  + ((chartHigh - chartLow) * fibRatio) :
 chartHigh - ((chartHigh - chartLow) * fibRatio)
 float _fibLabel = fibLevel /100
 var line  fibLine  =  line.new(na, na, na, na, xloc.bar_time, extend.right, fibColor,  line.style_solid,  2)
@@ -920,9 +920,9 @@ label.set_xy(fibLabel, int(math.avg(leftTime, rightTime)), fibPrice)
 label.set_text(fibLabel, str.tostring(fibPrice, format.mintick))
 //label.set_text(fibLabel, str.format("{0, number, #.###} ({1})", _fibLabel , str.tostring(fibPrice, format.mintick)))
 //Function for Fib Extension lines..
-fibExt(series color fibColor, series float fibLevel,  bool _showExt) => 
+fibExt(series color fibColor, series float fibLevel,  bool _showExt) =>
 float fibRatio = fibLevel / 100
-float fibPrice = isBull ? chartLow  - ((chartHigh - chartLow) * fibRatio) : 
+float fibPrice = isBull ? chartLow  - ((chartHigh - chartLow) * fibRatio) :
 chartHigh + ((chartHigh - chartLow) * fibRatio)
 float fibLabel = not flipInvertExts? -(fibLevel /100) :(fibLevel /100)+1  //getting both normal and inverted ext labels to display as positive numbers
 var line  fibLine  =  line.new(na, na, na, na, xloc.bar_time, extend.right, fibColor,  line.style_solid,  2)
