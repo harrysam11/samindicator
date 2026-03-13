@@ -329,6 +329,10 @@ alertNewHighHTFTxt = input.string("Break out!", title="", inline="3", group="Ale
 alertNewLowHTF  = input.bool(true, title = "New HTF Low", inline="4", group="Alerts")
 alertNewLowHTFTxt = input.string("Break down!", title="", inline="4", group="Alerts")
 
+alertCISDBullish    = input.bool(true, title = "CISD Bullish Break", inline="5", group="Alerts")
+alertCISDBullishTxt = input.string("CISD Bullish Break!", title="", inline="5", group="Alerts")
+alertCISDBearish    = input.bool(true, title = "CISD Bearish Break", inline="6", group="Alerts")
+alertCISDBearishTxt = input.string("CISD Bearish Break!", title="", inline="6", group="Alerts")
 
 // --
 // ----------------------------------------------------
@@ -706,6 +710,12 @@ if array.size(cisdLevelsBe) > 1 and not cisd_keepLevels
     label.delete(cisd_oldestBe.txt)
 
 //========================
+// CISD Break Flags
+//========================
+cisd_bullish_break = false
+cisd_bearish_break = false
+
+//========================
 // Manage bullish CISD (below price)
 //========================
 if array.size(cisdLevelsBu) >= 1
@@ -729,6 +739,7 @@ if array.size(cisdLevelsBu) >= 1
         array.push(cisdLevelsBe, cisd_bstruct2)
 
         cisd_currentState := false
+        cisd_bearish_break := true
 
 //========================
 // Manage bearish CISD (above price)
@@ -754,6 +765,18 @@ if array.size(cisdLevelsBe) >= 1
         array.push(cisdLevelsBu, cisd_bu_struct2)
 
         cisd_currentState := true
+        cisd_bullish_break := true
+
+// Alerts
+alertcondition(cisd_bearish_break, "CISD Bearish Break", "Price broke below the last bullish CISD level.")
+alertcondition(cisd_bullish_break, "CISD Bullish Break", "Price broke above the last bearish CISD level.")
+
+if cisd_bearish_break and alertCISDBearish
+    alert(alertCISDBearishTxt, alert.freq_once_per_bar)
+
+if cisd_bullish_break and alertCISDBullish
+    alert(alertCISDBullishTxt, alert.freq_once_per_bar)
+
 // This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
 // Â© LuxAlgo
 
@@ -1178,3 +1201,4 @@ if barstate.islast and showfibExt5 and not flipInvertExts
     fibExt(fibExt5Color, -(fibExt5*100), showExtLabels)
 if barstate.islast and showfibExt6 and not flipInvertExts
     fibExt(fibExt6Color, -(fibExt6*100), showExtLabels)
+    
