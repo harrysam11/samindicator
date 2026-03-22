@@ -21,7 +21,7 @@ Range    = input.bool(false,"Range High/Low", inline="range", group="Range")
 Mid      = input.bool(true,"Range Mid", inline="range", group="Range")
 high_col = input.color(color.red, title="High", inline="range 1", group="Range")
 low_col  = input.color(color.lime, title="Low",inline="range 1", group="Range")
-mid_col  = input.color(color.black), title="Mid",inline="range 1", group="Range")
+mid_col  = input.color(color.black, title="Mid",inline="range 1", group="Range")
 loc      = input.int(3,"Location", group="Location Settings")
 panel_spacing = input.int(15, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
 loc2 = loc + panel_spacing
