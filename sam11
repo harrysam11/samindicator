@@ -11,22 +11,8 @@
 indicator("CRT - Samusdtt v1",overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
 
 // ~~ Inputs {
-// Core Inputs & Candles
-fib_level = input.float(3.5, title="Fib Level", minval=0.0, step=0.1, group="Core Inputs & Candles")
-show_labels_ext = input.bool(true, title="Show Labels (Extensions)", group="Core Inputs & Candles")
-
-candle2_reversal = input.bool(true, title="Candle 2 (Reversal)", group="Core Inputs & Candles")
-candle3_expansion = input.bool(false, title="Candle 3 (Expansion)", group="Core Inputs & Candles")
-
-reversals_filter_enabled = input.bool(false, title="Reversals Filter Enabled", group="Core Inputs & Candles")
-reversals_filter_value = input.int(20, title="Reversals Filter", minval=1, maxval=100, group="Core Inputs & Candles")
-
-wick_threshold_pct = input.int(40, title="Wick Threshold %", minval=0, maxval=100, group="Core Inputs & Candles")
-
-// HTF Candles (existing)
 tf       = input.timeframe("D","Timeframe", group="Higher Timeframe Candles")
-numb     = input.int(3,"Amount of Candles",minval=0, maxval=20, group="Higher Timeframe Candles")+1
-
+numb     = input.int(4,"Amount of Candles",minval=0, maxval=20, group="Higher Timeframe Candles")+1
 dn_col   = input.color(color.new(color.black,10), title="Dn", inline="Candles", group="Higher Timeframe Candles")
 dn_wick  = input.color(color.new(color.black,0), title="Wick", inline="Candles", group="Higher Timeframe Candles")
 up_col   = input.color(color.new(color.lime,10), title="Up",inline="Candles", group="Higher Timeframe Candles")
@@ -36,52 +22,6 @@ Mid      = input.bool(true,"Range Mid", inline="range", group="Range")
 high_col = input.color(color.red, title="High", inline="range 1", group="Range")
 low_col  = input.color(color.lime, title="Low",inline="range 1", group="Range")
 mid_col  = input.color(color.rgb(20, 69, 246), title="Mid",inline="range 1", group="Range")
-
-// 2. Fibonacci Retracements & Extensions
-ote_show_box = input.bool(true, title="OTE Box: Show Fib Box", group="Fibonacci")
-ote_show_text = input.bool(true, title="OTE Box: Show Text", group="Fibonacci")
-
-retracement_highlow = input.bool(true, title="Retracements: High/Low", group="Fibonacci")
-retracement_midline = input.bool(true, title="Retracements: Midline", group="Fibonacci")
-retracement_618 = input.bool(false, title="Retracement 61.8", group="Fibonacci")
-retracement_786 = input.bool(false, title="Retracement 78.6", group="Fibonacci")
-retracement_886 = input.bool(false, title="Retracement 88.6", group="Fibonacci")
-
-ext1_enable = input.bool(true, title="Extension #1 1.618", group="Fibonacci")
-ext1_value = input.float(1.618, title="Ext #1 Value", minval=0.0, step=0.001, group="Fibonacci")
-ext2_enable = input.bool(true, title="Extension #2 2.0", group="Fibonacci")
-ext2_value = input.float(2.0, title="Ext #2 Value", minval=0.0, step=0.001, group="Fibonacci")
-ext3_enable = input.bool(false, title="Extension #3", group="Fibonacci")
-ext4_enable = input.bool(false, title="Extension #4", group="Fibonacci")
-ext5_enable = input.bool(false, title="Extension #5", group="Fibonacci")
-ext6_enable = input.bool(false, title="Extension #6", group="Fibonacci")
-
-// 3. Comparison & Time
-pivot_lookback = input.int(3, title="Pivot Lookback", minval=1, group="Comparison & Time")
-comparison_enabled = input.bool(true, title="Comparison Symbols Enabled", group="Comparison & Time")
-comparison_sym1 = input.string("OANDA:USDJPY", title="Comparison Symbol 1", group="Comparison & Time")
-comparison_sym2 = input.string("OANDA:XAGUSD", title="Comparison Symbol 2", group="Comparison & Time")
-time_filter_enabled = input.bool(true, title="Time Filter Enabled", group="Comparison & Time")
-time_filter_start = input.time(64800000, title="Time Filter Start", group="Comparison & Time")  // 18:00 in ms
-time_filter_end   = input.time(70200000, title="Time Filter End", group="Comparison & Time")    // 19:30 in ms
-local_timezone = input.string("GMT+5", title="Local Time Zone", group="Comparison & Time")
-
-// 4. Liquidity & CISD
-alert_new_high = input.bool(true, title="Alert: New High", group="Liquidity & CISD")
-alert_new_low = input.bool(true, title="Alert: New Low", group="Liquidity & CISD")
-alert_new_htf_high = input.bool(true, title="Alert: New HTF High", group="Liquidity & CISD")
-alert_new_htf_low = input.bool(true, title="Alert: New HTF Low", group="Liquidity & CISD")
-alert_cisd_bull_break = input.bool(true, title="Alert: CISD Bullish Break", group="Liquidity & CISD")
-alert_cisd_bear_break = input.bool(true, title="Alert: CISD Bearish Break", group="Liquidity & CISD")
-
-liq_voids_threshold = input.float(0.5, title="Liquidity Voids Threshold", minval=0.0, step=0.01, group="Liquidity & CISD")
-liq_voids_filled = input.bool(true, title="Filled Liquidity Voids Enabled", group="Liquidity & CISD")
-liq_left_bars = input.int(15, title="Liquidity Levels Left Bars", minval=1, group="Liquidity & CISD")
-liq_right_bars = input.int(5, title="Liquidity Levels Right Bars", minval=1, group="Liquidity & CISD")
-
-mitigation_show = input.bool(true, title="Mitigation: Show", group="Liquidity & CISD")
-mitigation_candle_type = input.string("Wick", title="Mitigation Candle Type", options=["Wick","Body"], group="Liquidity & CISD")
-
 loc      = input.int(1,"Location", group="Location Settings")
 panel_spacing = input.int(8, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
 loc2 = loc + panel_spacing
