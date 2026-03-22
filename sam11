@@ -8,7 +8,7 @@
 // Â© Zeiierman
 
 //@version=5
-indicator("CRT - Samusdtt v1",overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
+indicator("CRT - Samusdtt",overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
 
 // ~~ Inputs {
 tf       = input.timeframe("D","Timeframe", group="Higher Timeframe Candles")
@@ -21,9 +21,9 @@ Range    = input.bool(false,"Range High/Low", inline="range", group="Range")
 Mid      = input.bool(true,"Range Mid", inline="range", group="Range")
 high_col = input.color(color.red, title="High", inline="range 1", group="Range")
 low_col  = input.color(color.lime, title="Low",inline="range 1", group="Range")
-mid_col  = input.color(color.rgb(20, 69, 246), title="Mid",inline="range 1", group="Range")
-loc      = input.int(1,"Location", group="Location Settings")
-panel_spacing = input.int(8, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
+mid_col  = input.color(color.black), title="Mid",inline="range 1", group="Range")
+loc      = input.int(3,"Location", group="Location Settings")
+panel_spacing = input.int(15, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
 loc2 = loc + panel_spacing
 
 // ~~ Table Inputs {
@@ -32,7 +32,7 @@ TblSize        = input.string(size.normal,title="",options=[size.auto,size.tiny,
 pos            = input.string(position.top_right, title="",options =[position.top_right,position.top_center,
  position.top_left,position.bottom_right,position.bottom_center,position.bottom_left,position.middle_right,position.middle_left],inline="tbl", group="Table")
 textcolor      = input.color(color.white, title="Text",inline="tbl_col", group="Table")
-bgcolor        = input.color(color.new(color.blue,30), title="Bg",inline="tbl_col", group="Table")
+bgcolor        = input.color(color.new(color.black,30), title="Bg",inline="tbl_col", group="Table")
 //~~~}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
@@ -64,7 +64,7 @@ auto_map_tf_p2(chart_tf) =>
         60      => "60"     // 1min → 1H
         180     => "240"    // 3min → 4H
         300     => "D"      // 5min → 1D
-        900     => "D"    // 15min → 4hour
+        900     => "W"    // 15min → 4hour
         1800    => "D"    // 30min → 4hour
         3600    => "1M"      // 60min → daily
         14400   => "1M"      // 4hour → weekly
@@ -274,7 +274,7 @@ rightBars  = input.int(5, title = "Right Bars", group=_lvlsGrp, tooltip="Set the
 _removeGrp = "Mitigation Settings"
 removeMitigated  = input.bool(true, title = "Mitigated", inline="1", group=_removeGrp)
 mitiOptions  = input.string("Show", title = "â€‡â€‡â€‡â€‡",  inline="1", options=["Remove", "Show"], group=_removeGrp, tooltip="Show: Liquidity Levels will stop printing when mitigated and remain on the chart.\nRemove: Liquidity Levels will be removed from the chart when mitigated.")
-_candleType  = input.string("Close", title = "Candle type", options=["Close", "Wick"], group=_removeGrp, tooltip="Choose whether a candle close or a candles high/low is needed to determine a mitigated Liquidity Level")
+_candleType  = input.string("Wick", title = "Candle type", options=["Close", "Wick"], group=_removeGrp, tooltip="Choose whether a candle close or a candles high/low is needed to determine a mitigated Liquidity Level")
 // --
 _displayStyleGrp = "Display Styles"
 displayStyle  = input.string("Lines", title = "Display Style", options=["Lines", "Boxes"], group=_displayStyleGrp, tooltip="Choose how Liquidity Levels are displayed on the chart")
@@ -1070,10 +1070,10 @@ import twingall/BasicVisibleChart/1
 
 useBodies =input.bool(false, "use Candle Bodies to anchor range")
 showFibBox = input.bool(true, "show Fib Box", group = "OTE box", inline = "2")
-boxColor = input.color(color.new(color.yellow, 82), "", group = "OTE box", inline = "2")
+boxColor = input.color(color.new(color.gray, 82), "", group = "OTE box", inline = "2")
 showText = input.bool(false, "show Text",group = "OTE box", inline = "2")
 showHighLowLines=input.bool(true, "high/low lines", group = "fib retracements",inline = "3")
-lineColor = input.color(color.rgb(217, 76, 217), "", group = "fib retracements",inline = "3")
+lineColor = input.color(color.black, "", group = "fib retracements",inline = "3")
 showMidline =input.bool(true, "Midline", group = "fib retracements",inline = "3")
 midlineColor = input.color(color.gray,"", group = "fib retracements",inline = "3")
 show61eight=input.bool(false, "show 61.8 line", group = "fib retracements",inline = "5")
@@ -1207,8 +1207,8 @@ if barstate.islast and showfibExt6 and not flipInvertExts
 //---------------------------------------------------------------------------------------------------------------------}
 //CONSTANTS & STRINGS & INPUTS
 //---------------------------------------------------------------------------------------------------------------------{
-GREEN               = #089981
-RED                 = #F23645
+GREEN               = #00FF0000
+RED                 = #00FF0000
 SILVER              = color.silver
 
 STYLE_GROUP         = 'STYLE'
@@ -1226,7 +1226,7 @@ NS                  = EN_SPACE
 SS                  = SIX_PER_EM_SPACE
 
 candle2Input        = input.bool(   true,   'Candle 2 (Reversal)')
-candle3Input        = input.bool(   true,   'Candle 3 (Expansion)')
+candle3Input        = input.bool(   false,   'Candle 3 (Expansion)')
 reversalFilterInput = input.bool(   false,  'Reversals Filter',         inline = 'filter')
 filterLengthInput   = input.int(    20,      '',                        inline = 'filter')
 wickPercentInput    = input.int(    40,     'Wick Threshold %'+NS+SS,   tooltip = wickSizeTooltip)
@@ -1237,8 +1237,8 @@ transparencyInput   = input.int(    80,     'Transparency',             group = 
 levelsInput         = input.bool(   true,   'Levels',                   group = STYLE_GROUP, inline = 'levels')
 levelsColorInput    = input.color(  SILVER, MS+MS+MS+MS,                group = STYLE_GROUP, inline = 'levels')
 levelsAutoInput     = input.bool(   true,   'Auto',                     group = STYLE_GROUP, inline = 'levels')
-candle2ZoneInput    = input.bool(   true,   'Candle 2 Zone',            group = STYLE_GROUP)
-candle3ZoneInput    = input.bool(   true,   'Candle 3 Zone',            group = STYLE_GROUP)
+candle2ZoneInput    = input.bool(   false,   'Candle 2 Zone',            group = STYLE_GROUP)
+candle3ZoneInput    = input.bool(   false,   'Candle 3 Zone',            group = STYLE_GROUP)
 
 candle2AlertInput   = input.bool(   true,   'Candle 2 Alerts',          group = ALERTS_GROUP)
 candle3AlertInput   = input.bool(   true,   'Candle 3 Alerts',          group = ALERTS_GROUP)
