@@ -1070,7 +1070,7 @@ import twingall/BasicVisibleChart/1
 
 useBodies =input.bool(false, "use Candle Bodies to anchor range")
 showFibBox = input.bool(true, "show Fib Box", group = "OTE box", inline = "2")
-boxColor = input.color(color.new(#D9D9D9, 20), group = "OTE box", inline = "2")
+boxColor = input.color(color.new(#D9D9D9, 82), group = "OTE box", inline = "2")
 showText = input.bool(true, "show Text",group = "OTE box", inline = "2")
 showHighLowLines=input.bool(true, "high/low lines", group = "fib retracements",inline = "3")
 lineColor = input.color(color.black, "", group = "fib retracements",inline = "3")
