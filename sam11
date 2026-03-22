@@ -12,16 +12,16 @@ indicator("CRT - Samusdtt",overlay = true,max_bars_back = 500, max_boxes_count =
 
 // ~~ Inputs {
 tf       = input.timeframe("D","Timeframe", group="Higher Timeframe Candles")
-numb     = input.int(4,"Amount of Candles",minval=0, maxval=20, group="Higher Timeframe Candles")+1
+numb     = input.int(3,"Amount of Candles",minval=0, maxval=20, group="Higher Timeframe Candles")+1
 dn_col   = input.color(color.new(color.black,10), title="Dn", inline="Candles", group="Higher Timeframe Candles")
 dn_wick  = input.color(color.new(color.black,0), title="Wick", inline="Candles", group="Higher Timeframe Candles")
 up_col   = input.color(color.new(color.lime,10), title="Up",inline="Candles", group="Higher Timeframe Candles")
 up_wick  = input.color(color.new(color.black,0), title="Wick", inline="Candles", group="Higher Timeframe Candles")
 Range    = input.bool(false,"Range High/Low", inline="range", group="Range")
 Mid      = input.bool(true,"Range Mid", inline="range", group="Range")
-high_col = input.color(color.red, title="High", inline="range 1", group="Range")
-low_col  = input.color(color.lime, title="Low",inline="range 1", group="Range")
-mid_col  = input.color(color.black, title="Mid",inline="range 1", group="Range")
+high_col = input.color(color.black, title="High", inline="range 1", group="Range")
+low_col  = input.color(color.black, title="Low",inline="range 1", group="Range")
+mid_col  = input.color(color.gray, title="Mid",inline="range 1", group="Range")
 loc      = input.int(3,"Location", group="Location Settings")
 panel_spacing = input.int(15, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
 loc2 = loc + panel_spacing
@@ -264,7 +264,7 @@ if timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(sepEffective)
 
 _tfSettings = "TimeFrame Settings"
 currentTF  = input.bool(true, title = "Liquidity Levels", group=_tfSettings)
-htfBool  = input.bool(false, title = "Higher Timeframe",inline="1", group=_tfSettings)
+htfBool  = input.bool(true, title = "Higher Timeframe",inline="1", group=_tfSettings)
 htfTF  = enable_all_toggles and enable_auto_htf ? auto_map_tf(timeframe.period) : input.timeframe("", title = "", inline="1",group=_tfSettings, tooltip="Display Liquidity Levels for a Higher Timeframe")
 // --
 _lvlsGrp = "Liquidity Levels"
@@ -1070,8 +1070,8 @@ import twingall/BasicVisibleChart/1
 
 useBodies =input.bool(false, "use Candle Bodies to anchor range")
 showFibBox = input.bool(true, "show Fib Box", group = "OTE box", inline = "2")
-boxColor = input.color(color.new(color.gray, 82), "", group = "OTE box", inline = "2")
-showText = input.bool(false, "show Text",group = "OTE box", inline = "2")
+boxColor = input.color(#D9D9D9, "", group = "OTE box", inline = "2")
+showText = input.bool(true, "show Text",group = "OTE box", inline = "2")
 showHighLowLines=input.bool(true, "high/low lines", group = "fib retracements",inline = "3")
 lineColor = input.color(color.black, "", group = "fib retracements",inline = "3")
 showMidline =input.bool(true, "Midline", group = "fib retracements",inline = "3")
@@ -1207,8 +1207,8 @@ if barstate.islast and showfibExt6 and not flipInvertExts
 //---------------------------------------------------------------------------------------------------------------------}
 //CONSTANTS & STRINGS & INPUTS
 //---------------------------------------------------------------------------------------------------------------------{
-GREEN               = #00FF0000
-RED                 = #00FF0000
+GREEN               = #00ff0000
+RED                 = #00ff0000
 SILVER              = color.silver
 
 STYLE_GROUP         = 'STYLE'
