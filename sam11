@@ -62,8 +62,8 @@ comparison_enabled = input.bool(true, title="Comparison Symbols Enabled", group=
 comparison_sym1 = input.string("OANDA:USDJPY", title="Comparison Symbol 1", group="Comparison & Time")
 comparison_sym2 = input.string("OANDA:XAGUSD", title="Comparison Symbol 2", group="Comparison & Time")
 time_filter_enabled = input.bool(true, title="Time Filter Enabled", group="Comparison & Time")
-time_filter_start = input.time(timestamp("GMT+5", year, month, dayofmonth, 18, 0), title="Time Filter Start", group="Comparison & Time")
-time_filter_end   = input.time(timestamp("GMT+5", year, month, dayofmonth, 19, 30), title="Time Filter End", group="Comparison & Time")
+time_filter_start = input.time(64800000, title="Time Filter Start", group="Comparison & Time")  // 18:00 in ms
+time_filter_end   = input.time(70200000, title="Time Filter End", group="Comparison & Time")    // 19:30 in ms
 local_timezone = input.string("GMT+5", title="Local Time Zone", group="Comparison & Time")
 
 // 4. Liquidity & CISD
