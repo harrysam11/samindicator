@@ -8,7 +8,7 @@
 // Â© Zeiierman
 
 //@version=5
-indicator("CRT - Samusdtt",overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
+indicator("CRT - Samusdtt", overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
 
 // ~~ Inputs {
 tf       = input.timeframe("D","Timeframe", group="Higher Timeframe Candles")
@@ -64,7 +64,7 @@ auto_map_tf_p2(chart_tf) =>
         60      => "60"     // 1min → 1H
         180     => "240"    // 3min → 4H
         300     => "D"      // 5min → 1D
-        900     => "W"    // 15min → 4hour
+        900     => "D"    // 15min → 4hour
         1800    => "D"    // 30min → 4hour
         3600    => "1M"      // 60min → daily
         14400   => "1M"      // 4hour → weekly
@@ -1070,7 +1070,7 @@ import twingall/BasicVisibleChart/1
 
 useBodies =input.bool(false, "use Candle Bodies to anchor range")
 showFibBox = input.bool(true, "show Fib Box", group = "OTE box", inline = "2")
-boxColor = input.color(#D9D9D9, "", group = "OTE box", inline = "2")
+boxColor = input.color(color.new(#D9D9D9, 20), group = "OTE box", inline = "2")
 showText = input.bool(true, "show Text",group = "OTE box", inline = "2")
 showHighLowLines=input.bool(true, "high/low lines", group = "fib retracements",inline = "3")
 lineColor = input.color(color.black, "", group = "fib retracements",inline = "3")
