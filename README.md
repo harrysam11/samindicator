@@ -1,6 +1,6 @@
 0 # samindicator
 
-A Pine Script indicator package for TradingView, developed from the original `CRT - Samusdtt v1` strategy.
+A Pine Script indicator package for TradingView, developed from the original `CRT - Samusdtt` strategy.
 
 ## Overview
 
