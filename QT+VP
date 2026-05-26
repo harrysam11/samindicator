@@ -1,0 +1,2854 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © samusdtt
+
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Enigma
+//@version=6
+indicator("QT[✦]+VP", overlay = true, max_boxes_count = 500, max_labels_count = 500, max_lines_count = 500, max_bars_back=5000)
+
+// ✦✦✦ IMPORT THE ASSET CORRELATION LIBRARY ✦✦✦
+import ENIGMA_001/AssetCorrelationUtils/3 as AC
+
+//------------------------------------------------------------------------------
+//Settings
+g0 = "VISIBILITY SETTINGS"
+g3 = " ALERTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+g6 = "SSMTS ON CHART ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+g_sbar = "SSMT STATUS BAR ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+g_psp  = "ADVANCED PSP ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+g_qcisd = "QCISD SETTINGS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+mdl1 = "Auto"
+mdl2 = "Custom"
+modeltype       = input.string(defval =  mdl1, title = "Calculation Mode", options=[ mdl1, mdl2 ],inline= "al0",group = g0,tooltip= " Micro => 1-2m,'\n' 90m =>3m-10m, '\n'Daily=> 15-30m, '\n'Weekly => h1-12h, '\n' Effect => Visibility")
+alerttype       = input.string(defval = "All", title = "Type of SSMT", options=["All", "Normal","Hidden"],inline= "al0",group = g0,tooltip= "Effect => Visibility and Alerts")
+i_font          = input.string("small", "Chart Text Size",  options = ["tiny", "small",  "normal", "large", "huge"],inline="0",group = g0)
+botm            = "1"
+topm            = "2"
+botN            = "3"
+topN            = "10"
+botD            = "15"
+topD            = "30"
+botW            = "60"
+topW            = "180"
+botMo           = "180"
+topMo           = "360"
+botQ            = "1D"
+topQ            = "1D"
+botY            = "1W"
+topY            = "1W"
+
+// -----------------------------------------------------------------------------
+// SSMT STATUS BAR SETTINGS
+// -----------------------------------------------------------------------------
+show_sbar_st = input.bool(true, "Show SSMT Status Bar", group=g_sbar, tooltip="Displays a horizontal status bar of active Normal SSMT cycles.")
+sbar_pos_in  = input.string("Top Right", "Status Bar Position", options=["Top Right", "Top Left", "Bottom Right", "Bottom Left"], group=g_sbar)
+sbar_size_in = input.string("Small", "Status Bar Font", options=["Tiny", "Small", "Normal", "Large"], group=g_sbar)
+
+c_sb_bull = input.color(color.new(#1e88e5, 0), "Bullish", inline="sb_c1", group=g_sbar)
+c_sb_bear = input.color(color.new(#e53935, 0), "Bearish", inline="sb_c1", group=g_sbar)
+c_sb_neut = input.color(color.new(color.gray, 50), "Neutral", inline="sb_c2", group=g_sbar)
+c_sb_sand = input.color(color.new(#424242, 0), "Sandwich", inline="sb_c2", group=g_sbar, tooltip="Text color when both bullish and bearish Normal SSMT are active simultaneously.")
+
+sb_show_y   = input.bool(false, "Show Yearly", inline="sb_v1", group=g_sbar)
+sb_show_q   = input.bool(false, "Show Quarterly", inline="sb_v1", group=g_sbar)
+sb_show_m   = input.bool(true, "Show Monthly", inline="sb_v1", group=g_sbar)
+sb_show_w   = input.bool(true, "Show Weekly", inline="sb_v2", group=g_sbar)
+sb_show_d   = input.bool(true, "Show Daily", inline="sb_v2", group=g_sbar)
+sb_show_90m = input.bool(true, "Show 90m", inline="sb_v2", group=g_sbar)
+sb_show_mic = input.bool(true, "Show Micro", inline="sb_v2", group=g_sbar)
+
+// -----------------------------------------------------------------------------
+// ADVANCED PSP SETTINGS
+// -----------------------------------------------------------------------------
+use_psp_adv   = input.bool(true, "Enable Advanced PSP", group=g_psp)
+max_psp_bars  = input.int(30, "Max PSP Markers", minval=10, group=g_psp)
+psp_vis_limit = input.timeframe("15", "Show on Timeframes >=", group=g_psp, tooltip="The PSP will only be visible if the Chart Timeframe is Greater Than or Equal to this setting.")
+psp_mode      = input.string("Body Only", "Display Mode", options=["Icons Only", "Body Only", "Both"], group=g_psp)
+bool show_icons = (psp_mode == "Icons Only" or psp_mode == "Both")
+bool show_body  = (psp_mode == "Body Only"  or psp_mode == "Both")
+psp_bull_clr   = input.color(color.rgb(50, 146, 224, 74), "Bullish Icon", inline="psp_style", group=g_psp)
+psp_bear_clr   = input.color(color.rgb(216, 57, 57, 79), "Bearish Icon", inline="psp_style", group=g_psp)
+psp_bull_shape = input.string("●", "Shape", options=["●", "✦", "▲", "♦", "♟"], inline="psp_icon", group=g_psp)
+psp_bear_shape = input.string("●", "Shape", options=["●", "✦", "▼", "♦", "♟"], inline="psp_icon", group=g_psp)
+psp_size_str   = input.string("Tiny", "Size", options=["Tiny", "Small", "Normal", "Large", "Huge", "Auto"], inline="psp_icon", group=g_psp)
+string psp_size  = switch psp_size_str
+    "Tiny"   => size.tiny
+    "Small"  => size.small
+    "Normal" => size.normal
+    "Large"  => size.large
+    "Huge"   => size.huge
+    "Auto"   => size.auto
+    => size.small
+psp_bull_body  = input.color(color.new(#2195f3, 73), "Bull Body", inline="psp_body", group=g_psp)
+psp_bear_body  = input.color(color.new(#dd455c, 72), "Bear Body", inline="psp_body", group=g_psp)
+
+///////////////////////////////////////////////////////////////////////////////////////////
+hidelines  = input.bool(defval=false,title=  "Hide lines",inline="00",group = g6)
+ssmt_history_limit = input.int(50, "SSMT History Limit", minval = 1, maxval = 100, group = g6, tooltip="Controls the maximum number of Normal and Hidden SSMT lines/labels to show.")
+hidelabels = input.bool(defval=false,title=  "Hide labels",inline="00",group = g6)
+show_smtMo = input.bool(defval=true ,title=  "Normal Monthly " ,inline="m0",group = g6)
+show_smtW  = input.bool(defval=true ,title=  "Normal Weekly " ,inline="0",group = g6)
+show_smtD  = input.bool(defval=true ,title=  "Normal Daily   ",inline="1",group = g6)
+show_smtN  = input.bool(defval=true ,title=  "Normal 90m    " ,inline="2",group = g6)
+show_smtm  = input.bool(defval=true ,title=  "Normal Micro  " ,inline="3",group = g6)
+show_smtQ  = input.bool(defval=true ,title=  "Normal Quarterly" ,inline="q0",group = g6)
+show_smtY  = input.bool(defval=true ,title=  "Normal Yearly " ,inline="y0",group = g6)
+smtMo_clr  = input.color(color.rgb(11, 11, 10), title  = "N",inline="m0",group= g6)
+smtW_clr   = input.color(color.rgb(4, 138, 234)  , title  = "N",inline="0",group= g6)
+smtD_clr   = input.color(color.rgb(241, 151, 15) , title  = "N",inline="1",group= g6)
+smtN_clr   = input.color(color.purple, title  = "N",inline="2",group= g6)
+smtm_clr   = input.color(color.navy  , title  = "N",inline="3",group= g6)
+smtQ_clr   = input.color(color.lime, title  = "N",inline="q0",group = g6)
+smtY_clr   = input.color(color.rgb(228, 13, 27), title  = "N",inline="y0",group = g6)
+show_hsmtMo = input.bool(defval=false ,title=  "Hidden Monthly " ,inline="m0",group = g6)
+show_hsmtW  = input.bool(defval=false ,title=  "Hidden Weekly " ,inline="0",group = g6)
+show_hsmtD  = input.bool(defval=false ,title=  "Hidden Daily   ",inline="1",group = g6)
+show_hsmtN  = input.bool(defval=false ,title=  "Hidden 90m    " ,inline="2",group = g6)
+show_hsmtm  = input.bool(defval=false ,title=  "Hidden Micro  " ,inline="3",group = g6)
+show_hsmtQ  = input.bool(defval=false ,title=  "Hidden Quarterly" ,inline="q0",group = g6)
+show_hsmtY  = input.bool(defval=false ,title=  "Hidden Yearly " ,inline="y0",group = g6)
+hsmtMo_clr = input.color(color.new(#100607, 0), title  = "H",inline="m0",group= g6)
+hsmtW_clr  = input.color(color.new(#068ff1, 0)  , title  = "H",inline="0",group= g6)
+hsmtD_clr  = input.color(color.new(#ec7906, 0) , title  = "H",inline="1",group= g6)
+hsmtN_clr  = input.color(color.new(#a417d3, 0), title  = "H",inline="2",group= g6)
+hsmtm_clr  = input.color(color.new(#006064,0)  , title  = "H",inline="3",group= g6)
+hsmtQ_clr  = input.color(color.new(#b2ff59,0), title  = "H",inline="q0",group = g6)
+hsmtY_clr  = input.color(color.new(#f20814, 0), title  = "H",inline="y0",group = g6)
+smt_txt_all = input.color(color.rgb(54, 58, 69, 46), title = "SSMT Text Color", group=g6)
+normstyle  = input.string(line.style_solid ,title="Normal SSMT line style",options=[line.style_solid,line.style_dotted,line.style_dashed],group = g6)
+hiddstyle  = input.string(line.style_dashed,title="Hidden SSMT line style",options=[line.style_solid,line.style_dotted,line.style_dashed],group = g6)
+
+getLineStyle(_style) =>
+    _style == "Dashed" ? line.style_dashed : _style == "Dotted" ? line.style_dotted : line.style_solid
+
+Mobu = "M Bull SSMT" , Mobe = "M Bear SSMT"
+Wbu = "W Bull SSMT" ,  Wbe = "W Bear SSMT"
+Dbu = "D Bull SSMT"  , Dbe = "D Bear SSMT"
+Qbu = "Q Bull SSMT"  , Qbe = "Q Bear SSMT"
+Ybu = "Y Bull SSMT"  , Ybe = "Y Bear SSMT"
+Nbu = "90m Bull SSMT", Nbe = "90m Bear SSMT"
+mbu = "Mic Bull SSMT", mbe = "Mic Bear SSMT"
+al1ok = input.bool(defval=true,title="",inline= "al1",group = g3)
+al2ok = input.bool(defval=true,title="",inline= "al2",group = g3)
+al3ok = input.bool(defval=true,title="",inline= "al3",group = g3)
+al4ok = input.bool(defval=true,title="",inline= "al4",group = g3)
+al_con1 = input.string(defval= "W Bull SSMT", title= "1",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al1",group = g3)
+al_con3 = input.string(defval= "90m Bull SSMT", title= "3",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al1",group = g3)
+bl_con1 = input.string(defval= "W Bear SSMT", title= "1",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al2",group = g3)
+bl_con3 = input.string(defval= "90m Bear SSMT", title= "3",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al2",group = g3)
+cl_con1 = input.string(defval= "D Bull SSMT", title= "1",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al3",group = g3)
+cl_con3 = input.string(defval= "Mic Bull SSMT", title= "3",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al3",group = g3)
+dl_con1 = input.string(defval= "D Bear SSMT", title= "1",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al4",group = g3)
+dl_con3 = input.string(defval= "Mic Bear SSMT", title= "3",options=[Mobu,Mobe,Wbu,Wbe,Dbu,Dbe,Qbu,Qbe,Ybu,Ybe,Nbu,Nbe,mbu,mbe,"none"],inline="al4",group = g3)
+
+g11 = "TRIAD ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+triad_selection_mode = input.string("Auto", "Triad Selection", options = ["Auto", "Manual", "Off"], group = g11, tooltip = "Auto uses imported library logic. Manual lets you define specific pairs.")
+tr1A = triad_selection_mode == "Manual"
+enable_m1 = input.bool(false, "Triad 1", group=g11, inline="m1")
+st1_m1 = input.symbol("","", group=g11, inline="m1")
+st2_m1 = input.symbol("", "&", group=g11, inline="m1")
+st3_m1 = input.symbol("", "&", group=g11, inline="m1")
+inv_m1 = input.bool(false, "Inverse", group=g11, inline="m1")
+enable_m2 = input.bool(false, "Triad 2", group=g11, inline="m2")
+st1_m2 = input.symbol("","", group=g11, inline="m2")
+st2_m2 = input.symbol("", "&", group=g11, inline="m2")
+st3_m2 = input.symbol("", "&", group=g11, inline="m2")
+inv_m2 = input.bool(false, "Inverse", group=g11, inline="m2")
+enable_m3 = input.bool(false, "Triad 3", group=g11, inline="m3")
+st1_m3 = input.symbol("","", group=g11, inline="m3")
+st2_m3 = input.symbol("", "&", group=g11, inline="m3")
+st3_m3 = input.symbol("", "&", group=g11, inline="m3")
+inv_m3 = input.bool(false, "Inverse", group=g11, inline="m3")
+enable_m4 = input.bool(false, "Triad 4", group=g11, inline="m4")
+st1_m4 = input.symbol("","", group=g11, inline="m4")
+st2_m4 = input.symbol("", "&", group=g11, inline="m4")
+st3_m4 = input.symbol("", "&", group=g11, inline="m4")
+inv_m4 = input.bool(false, "Inverse", group=g11, inline="m4")
+showsmt1    = input.bool(defval = true , title = "Show SMT 1 ",group = g11,inline="s5")
+showsmt2    = input.bool(defval = true , title = "Show SMT 2 ",group = g11,inline="s5")
+
+g12 ="DYAD ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+dyad_selection_mode = input.string("Off", "Dyad Selection", options = ["Auto", "Manual", "Off"], group = g12, inline="dyad_mode", tooltip = "Auto uses imported library logic. Manual lets you define specific pairs.")
+enable_dyad_m1 = input.bool(false, "Dyad 1", group=g12, inline="dyad_m1")
+dyad_m1_sym1     = input.symbol("","", group = g12, inline="dyad_m1")
+dyad_m1_sym2     = input.symbol("", "&", group = g12, inline="dyad_m1")
+inv_dyad_m1 = input.bool(false, "Inverse", group=g12, inline="dyad_m1")
+enable_dyad_m2 = input.bool(false, "Dyad 2", group=g12, inline="dyad_m2")
+dyad_m2_sym1     = input.symbol("","", group = g12, inline="dyad_m2")
+dyad_m2_sym2     = input.symbol("", "&", group = g12, inline="dyad_m2")
+inv_dyad_m2 = input.bool(false, "Inverse", group=g12, inline="dyad_m2")
+enable_dyad_m3 = input.bool(false, "Dyad 3", group=g12, inline="dyad_m3")
+dyad_m3_sym1     = input.symbol("","", group = g12, inline="dyad_m3")
+dyad_m3_sym2     = input.symbol("", "&", group = g12, inline="dyad_m3")
+inv_dyad_m3 = input.bool(false, "Inverse", group=g12, inline="dyad_m3")
+enable_dyad_m4 = input.bool(false, "Dyad 4", group=g12, inline="dyad_m4")
+dyad_m4_sym1     = input.symbol("","", group = g12, inline="dyad_m4")
+dyad_m4_sym2     = input.symbol("", "&", group = g12, inline="dyad_m4")
+inv_dyad_m4 = input.bool(false, "Inverse", group=g12, inline="dyad_m4")
+
+tz = input.string('UTC-4', title='Timezone', options=['UTC-11', 'UTC-10', 'UTC-9', 'UTC-8', 'UTC-7', 'UTC-6', 'UTC-5','UTC-4', 'UTC-3', 'UTC-2', 'UTC-1', 'UTC', 'UTC+1', 'UTC+2', 'UTC+3', 'UTC+4', 'UTC+5','UTC+5:30', 'UTC+6', 'UTC+7', 'UTC+8', 'UTC+9', 'UTC+10', 'UTC+11', 'UTC+12'],inline="s6", group='Timezone')
+badj= input.bool(defval = false, title = "B-ADJ: (For only futures)",group='Timezone',inline="s6")
+dayStartHour = input.int(18, "Day Start Hour (TZ)", minval=0, maxval=23, group='Timezone')
+
+show_qcisd         = input.bool(false, "Enable QCISD Engine", group=g_qcisd)
+bias_input         = input.string("Bullish", "Market Bias", options=["Bullish", "Bearish", "Neutral"], group=g_qcisd)
+qcisd_max_limit    = input.int(10, "Max QCISD Lines", minval=1, maxval=50, group=g_qcisd, tooltip="Limit line drawing to prevent memory exhaustion.")
+
+qcisd_width        = input.int(2, "Line Width", minval=1, inline="q_style", group=g_qcisd)
+qcisd_mono         = input.bool(false, "Monospace", inline="q_style", group=g_qcisd)
+qcisd_lbl_size_str = input.string("Small", "Text Size", options=["Tiny", "Small", "Normal"], inline="q_style", group=g_qcisd)
+string qcisd_lbl_size = qcisd_lbl_size_str == "Tiny" ? size.tiny : qcisd_lbl_size_str == "Normal" ? size.normal : size.small
+
+qcisd_bull_clr     = input.color(color.new(#00E676, 0), "Bull", inline="q_clr1", group=g_qcisd)
+qcisd_bear_clr     = input.color(color.new(#FF5252, 0), "Bear", inline="q_clr1", group=g_qcisd)
+qcisd_pend_clr     = input.color(color.new(#FFEA00, 0), "Pending", inline="q_clr2", group=g_qcisd)
+qcisd_text_clr     = input.color(color.new(#615e5e, 35), "Text", inline="q_clr2", group=g_qcisd)
+
+qcisd_trigger      = input.string("All", "HP-QCISD Alerts", options=["All", "Confirmation", "Invalidation", "Retest", "Off"], group=g_qcisd)
+qcisd_norm_trigger = input.string("Off", "Normal Alerts", options=["All", "Confirmation", "Invalidation", "Retest", "Off"], group=g_qcisd)
+
+var g_q_lines = array.new_line()
+var g_q_lbls  = array.new_label()
+var g_q_dirs  = array.new_int()
+var g_q_hp    = array.new_bool()
+var g_q_conf  = array.new_bool()
+var g_q_names = array.new_string()
+var g_q_pairs = array.new_string()
+
+n = bar_index
+tf = timeframe.period
+sym = syminfo.tickerid
+tipo = syminfo.type
+arr_inv = array.from(false,false)
+day_week  = dayofweek(time,'America/New_York')
+
+tf_ok_mic = timeframe.in_seconds(tf) <= timeframe.in_seconds("5")
+tf_ok = timeframe.in_seconds(tf) <= timeframe.in_seconds("10")
+tf_okD = timeframe.in_seconds(tf) <= timeframe.in_seconds("30")
+tf_okW = timeframe.in_seconds(tf) <= timeframe.in_seconds("180")
+tf_okMo = timeframe.in_seconds(tf) <= timeframe.in_seconds("360")
+tf_okQ = timeframe.in_seconds(tf) <= timeframe.in_seconds("1D")
+tf_okY  = timeframe.in_seconds(tf) <= timeframe.in_seconds("1M")
+
+tf_ok_mic_V = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botm) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topm)) : (timeframe.in_seconds(tf) <= 120)
+tf_ok_V = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botN) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topN)) : (timeframe.in_seconds(tf) <= 600)
+tf_okD_V = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botD) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topD)) : (timeframe.in_seconds(tf) <= 1800)
+tf_okW_V = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botW) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topW)) : (timeframe.in_seconds(tf) <= 10800)
+tf_okMo_V = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botMo) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topMo)) : (timeframe.in_seconds(tf) <= 21600)
+tf_okQ_V = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botQ) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topQ)) : (timeframe.in_seconds(tf) <= 86400)
+tf_okY_V  = modeltype == mdl1 ? (timeframe.in_seconds(tf) >= timeframe.in_seconds(botY) and timeframe.in_seconds(tf) <= timeframe.in_seconds(topY)) : (timeframe.in_seconds(tf) <= 604800)
+
+add_to_line_array(arr, value) =>
+    array.unshift(arr, value)
+    if array.size(arr) > ssmt_history_limit
+        line.delete(array.pop(arr))
+add_to_label_array(arr, value) =>
+    array.unshift(arr, value)
+    if array.size(arr) > ssmt_history_limit
+        label.delete(array.pop(arr))
+
+f_leap_year(y) =>
+    y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+f_month_length(is_leap, m) =>
+    if m == 2
+        is_leap ? 29 : 28
+    else if (m == 4 or m == 6 or m == 9 or m == 11)
+        30
+    else
+        31
+
+msDay   = 24 * 60 * 60 * 1000
+msWeek  = 7  * 24 * 60 * 60 * 1000
+ms90m   = 90 * 60 * 1000
+msMicro = 1350000  // 22.5 minutes in ms
+yy  = year(time, tz)
+mo  = month(time, tz)
+dom = dayofmonth(time, tz)
+dow = dayofweek(time, tz)
+
+dayStartToday = timestamp(tz, yy, mo, dom, dayStartHour, 0)
+dayStart      = time >= dayStartToday ? dayStartToday : (dayStartToday - msDay)
+minsFromDayStart = int(((time - dayStart) % msDay) / (60 * 1000))  // 0..1439
+
+yy_c  = year(dayStart, tz)
+mo_c  = month(dayStart, tz)
+dom_c = dayofmonth(dayStart, tz)
+dow_c = dayofweek(dayStart, tz)
+
+qYear = mo_c <= 3 ? 1 : mo_c <= 6 ? 2 : mo_c <= 9 ?
+  3 : 4
+is_year1 = qYear == 1
+is_year2 = qYear == 2
+is_year3 = qYear == 3
+is_year4 = qYear == 4
+
+// ✦✦✦ UPDATED QUARTERLY MATH ✦✦✦
+q2Month = ((mo_c - 1) % 3) + 1
+// ✦✦✦ ---------------------- ✦✦✦
+
+is_quarter1 = q2Month == 1
+is_quarter2 = q2Month == 2
+is_quarter3 = q2Month == 3
+is_quarter4 = q2Month == 4
+curr_week  = weekofyear(dayStart + msDay, tz)
+days_in_mo = f_month_length(f_leap_year(yy_c), mo_c)
+day_end_mo = days_in_mo - dom_c
+iso_year = yy_c
+if mo_c == 12 and curr_week == 1
+    iso_year := yy_c + 1
+else if mo_c == 1 and curr_week >= 52
+    iso_year := yy_c - 1
+t_jan1 = timestamp(tz, iso_year, 1, 1, 0, 0)
+d_jan1 = dayofweek(t_jan1, tz)
+is_leap_iso = (iso_year % 4 == 0 and (iso_year % 100 != 0 or iso_year % 400 == 0))
+weeks_in_year = (d_jan1 == dayofweek.thursday or (d_jan1 == dayofweek.wednesday and is_leap_iso)) ? 53 : 52
+
+qMonth = weeks_in_year == 53 ? (curr_week == 1 ? 5 : ((curr_week - 2) % 4) + 1) : ((curr_week - 1) % 4) + 1
+Full_Week_Count = curr_week
+qWeek = dow_c == dayofweek.sunday ? 1 : dow_c == dayofweek.monday ? 2 : dow_c == dayofweek.tuesday ?
+  3 : dow_c == dayofweek.wednesday ? 4 : dow_c == dayofweek.thursday ? 5 : dow_c == dayofweek.friday ?
+  6 : dow_c == dayofweek.saturday ? 7 : na
+qDay = int(math.floor(minsFromDayStart / 360)) + 1  // 1..4
+minsIn6H = minsFromDayStart % 360
+q90 = int(math.floor(minsIn6H / 90)) + 1 // 1..4
+msInto90 = int((time - dayStart) % ms90m)
+qMicro = int(math.floor(msInto90 / msMicro)) + 1
+qMicro := qMicro < 1 ? 1 : qMicro > 4 ? 4 : qMicro
+new_year = ta.change(qYear), new_quart = ta.change(q2Month), new_month = ta.change(qMonth), new_week = ta.change(qWeek), new_daily = ta.change(qDay), new_90m = ta.change(q90), new_micro = ta.change(qMicro)
+
+is_sesa1 = qDay==1 and q90==1 and qMicro==1
+is_sesa2 = qDay==1 and q90==1 and qMicro==2
+is_sesa3 = qDay==1 and q90==1 and qMicro==3
+is_sesa4 = qDay==1 and q90==1 and qMicro==4
+is_sesb1 = qDay==1 and q90==2 and qMicro==1
+is_sesb2 = qDay==1 and q90==2 and qMicro==2
+is_sesb3 = qDay==1 and q90==2 and qMicro==3
+is_sesb4 = qDay==1 and q90==2 and qMicro==4
+is_sesc1 = qDay==1 and q90==3 and qMicro==1
+is_sesc2 = qDay==1 and q90==3 and qMicro==2
+is_sesc3 = qDay==1 and q90==3 and qMicro==3
+is_sesc4 = qDay==1 and q90==3 and qMicro==4
+is_sesd1 = qDay==1 and q90==4 and qMicro==1
+is_sesd2 = qDay==1 and q90==4 and qMicro==2
+is_sesd3 = qDay==1 and q90==4 and qMicro==3
+is_sesd4 = qDay==1 and q90==4 and qMicro==4
+is_sese1 = qDay==2 and q90==1 and qMicro==1
+is_sese2 = qDay==2 and q90==1 and qMicro==2
+is_sese3 = qDay==2 and q90==1 and qMicro==3
+is_sese4 = qDay==2 and q90==1 and qMicro==4
+is_sesf1 = qDay==2 and q90==2 and qMicro==1
+is_sesf2 = qDay==2 and q90==2 and qMicro==2
+is_sesf3 = qDay==2 and q90==2 and qMicro==3
+is_sesf4 = qDay==2 and q90==2 and qMicro==4
+is_sesg1 = qDay==2 and q90==3 and qMicro==1
+is_sesg2 = qDay==2 and q90==3 and qMicro==2
+is_sesg3 = qDay==2 and q90==3 and qMicro==3
+is_sesg4 = qDay==2 and q90==3 and qMicro==4
+is_sesh1 = qDay==2 and q90==4 and qMicro==1
+is_sesh2 = qDay==2 and q90==4 and qMicro==2
+is_sesh3 = qDay==2 and q90==4 and qMicro==3
+is_sesh4 = qDay==2 and q90==4 and qMicro==4
+is_sesi1 = qDay==3 and q90==1 and qMicro==1
+is_sesi2 = qDay==3 and q90==1 and qMicro==2
+is_sesi3 = qDay==3 and q90==1 and qMicro==3
+is_sesi4 = qDay==3 and q90==1 and qMicro==4
+is_sesj1 = qDay==3 and q90==2 and qMicro==1
+is_sesj2 = qDay==3 and q90==2 and qMicro==2
+is_sesj3 = qDay==3 and q90==2 and qMicro==3
+is_sesj4 = qDay==3 and q90==2 and qMicro==4
+is_sesk1 = qDay==3 and q90==3 and qMicro==1
+is_sesk2 = qDay==3 and q90==3 and qMicro==2
+is_sesk3 = qDay==3 and q90==3 and qMicro==3
+is_sesk4 = qDay==3 and q90==3 and qMicro==4
+is_sesl1 = qDay==3 and q90==4 and qMicro==1
+is_sesl2 = qDay==3 and q90==4 and qMicro==2
+is_sesl3 = qDay==3 and q90==4 and qMicro==3
+is_sesl4 = qDay==3 and q90==4 and qMicro==4
+is_sesm1 = qDay==4 and q90==1 and qMicro==1
+is_sesm2 = qDay==4 and q90==1 and qMicro==2
+is_sesm3 = qDay==4 and q90==1 and qMicro==3
+is_sesm4 = qDay==4 and q90==1 and qMicro==4
+is_sesn1 = qDay==4 and q90==2 and qMicro==1
+is_sesn2 = qDay==4 and q90==2 and qMicro==2
+is_sesn3 = qDay==4 and q90==2 and qMicro==3
+is_sesn4 = qDay==4 and q90==2 and qMicro==4
+is_seso1 = qDay==4 and q90==3 and qMicro==1
+is_seso2 = qDay==4 and q90==3 and qMicro==2
+is_seso3 = qDay==4 and q90==3 and qMicro==3
+is_seso4 = qDay==4 and q90==3 and qMicro==4
+is_sesp1 = qDay==4 and q90==4 and qMicro==1
+is_sesp2 = qDay==4 and q90==4 and qMicro==2
+is_sesp3 = qDay==4 and q90==4 and qMicro==3
+is_sesp4 = qDay==4 and q90==4 and qMicro==4
+
+is_sesa = qDay==1 and q90==1
+is_sesb = qDay==1 and q90==2
+is_sesc = qDay==1 and q90==3
+is_sesd = qDay==1 and q90==4
+is_sese = qDay==2 and q90==1
+is_sesf = qDay==2 and q90==2
+is_sesg = qDay==2 and q90==3
+is_sesh = qDay==2 and q90==4
+is_sesi = qDay==3 and q90==1
+is_sesj = qDay==3 and q90==2
+is_sesk = qDay==3 and q90==3
+is_sesl = qDay==3 and q90==4
+is_sesm = qDay==4 and q90==1
+is_sesn = qDay==4 and q90==2
+is_seso = qDay==4 and q90==3
+is_sesp = qDay==4 and q90==4
+
+is_sesq = qDay==1
+is_sesr = qDay==2
+is_sess = qDay==3
+is_sest = qDay==4
+
+is_week1 = qWeek == 1
+is_week2 = qWeek == 2
+is_week3 = qWeek == 3
+is_week4 = qWeek == 4
+is_week5 = qWeek == 5
+is_week6 = qWeek == 6
+is_week7 = qWeek == 7
+
+is_month1 = qMonth == 1
+is_month2 = qMonth == 2
+is_month3 = qMonth == 3
+is_month4 = qMonth == 4
+is_month5 = qMonth == 5
+
+arr_sesm   = array.from(
+  is_sesa1,is_sesa2,is_sesa3,is_sesa4,is_sesb1,is_sesb2,is_sesb3,is_sesb4,
+  is_sesc1,is_sesc2,is_sesc3,is_sesc4,is_sesd1,is_sesd2,is_sesd3,is_sesd4,
+  is_sese1,is_sese2,is_sese3,is_sese4,is_sesf1,is_sesf2,is_sesf3,is_sesf4,
+  is_sesg1,is_sesg2,is_sesg3,is_sesg4,is_sesh1,is_sesh2,is_sesh3,is_sesh4,
+  is_sesi1,is_sesi2,is_sesi3,is_sesi4,is_sesj1,is_sesj2,is_sesj3,is_sesj4,
+  is_sesk1,is_sesk2,is_sesk3,is_sesk4,is_sesl1,is_sesl2,is_sesl3,is_sesl4,
+  is_sesm1,is_sesm2,is_sesm3,is_sesm4,is_sesn1,is_sesn2,is_sesn3,is_sesn4,
+  is_seso1,is_seso2,is_seso3,is_seso4,is_sesp1,is_sesp2,is_sesp3,is_sesp4)
+val_sesm   = array.indexof(arr_sesm , true)
+arr_ses   = array.from(is_sesa,is_sesb,is_sesc,is_sesd,is_sese,is_sesf,is_sesg,is_sesh,is_sesi,is_sesj,is_sesk,is_sesl,is_sesm,is_sesn,is_seso,is_sesp)
+val_ses   = array.indexof(arr_ses , true)
+arr_sesD  = array.from(is_sesq,is_sesr,is_sess,is_sest)
+val_sesD  = array.indexof(arr_sesD,true)
+arr_sesW  = array.from(is_week1, is_week2, is_week3, is_week4, is_week5, is_week6, is_week7)
+val_sesW  = array.indexof(arr_sesW, true)
+arr_sesMo = array.from(is_month1, is_month2, is_month3, is_month4, is_month5)
+val_sesMo = array.indexof(arr_sesMo, true)
+arr_sesQ  = array.from(is_quarter1, is_quarter2, is_quarter3, is_quarter4)
+val_sesQ  = array.indexof(arr_sesQ, true)
+arr_sesY  = array.from(is_year1, is_year2, is_year3, is_year4)
+val_sesY  = array.indexof(arr_sesY, true)
+newMo = val_sesMo != val_sesMo[1]
+newW = val_sesW != val_sesW[1]
+newD = val_sesD != val_sesD[1]
+newN = val_ses  !=  val_ses[1]
+newm = val_sesm != val_sesm[1]
+newQ = val_sesQ != val_sesQ[1]
+newY  = val_sesY != val_sesY[1]
+
+////////////////////////////////////////////
+//CORRELATION LOGIC
+////////////////////////////////////////////
+csym  = sym
+tsym2 = sym
+tsym3 = sym
+
+// --- 1. ROBUST MANUAL MATCHING ---
+var string current_ticker = syminfo.ticker
+
+f_get_bare_ticker(_ticker_str) =>
+    string[] _parts = str.split(_ticker_str, ":")
+    array.size(_parts) > 1 ? array.get(_parts, 1) : _ticker_str
+
+f_check_match(input_sym) =>
+    if str.length(input_sym) == 0
+        false
+    else
+        t_sym = f_get_bare_ticker(input_sym)
+        (current_ticker == t_sym) or str.contains(sym, t_sym) or str.contains(input_sym, current_ticker)
+
+match_m1_1 = f_check_match(st1_m1), match_m1_2 = f_check_match(st2_m1), match_m1_3 = f_check_match(st3_m1)
+match_m2_1 = f_check_match(st1_m2), match_m2_2 = f_check_match(st2_m2), match_m2_3 = f_check_match(st3_m2)
+match_m3_1 = f_check_match(st1_m3), match_m3_2 = f_check_match(st2_m3), match_m3_3 = f_check_match(st3_m3)
+match_m4_1 = f_check_match(st1_m4), match_m4_2 = f_check_match(st2_m4), match_m4_3 = f_check_match(st3_m4)
+is_in_manual_m1 = tr1A and enable_m1 and (match_m1_1 or match_m1_2 or match_m1_3)
+is_in_manual_m2 = tr1A and enable_m2 and (match_m2_1 or match_m2_2 or match_m2_3)
+is_in_manual_m3 = tr1A and enable_m3 and (match_m3_1 or match_m3_2 or match_m3_3)
+is_in_manual_m4 = tr1A and enable_m4 and (match_m4_1 or match_m4_2 or match_m4_3)
+is_in_manual = is_in_manual_m1 or is_in_manual_m2 or is_in_manual_m3 or is_in_manual_m4
+
+var st1 = ""
+var st2 = ""
+var st3 = ""
+if is_in_manual_m1 and enable_m1
+    st1 := st1_m1, st2 := st2_m1, st3 := st3_m1
+else if is_in_manual_m2 and enable_m2
+    st1 := st1_m2, st2 := st2_m2, st3 := st3_m2
+else if is_in_manual_m3 and enable_m3
+    st1 := st1_m3, st2 := st2_m3, st3 := st3_m3
+else if is_in_manual_m4 and enable_m4
+    st1 := st1_m4, st2 := st2_m4, st3 := st3_m4
+
+// --- 2. ASSET CORRELATION LIBRARY (AUTO MODE) ---
+bool apply_backadj = not badj 
+AC.AssetConfig auto_cfg = AC.resolveAssets(syminfo.ticker, syminfo.tickerid, syminfo.type, syminfo.session, apply_backadj)
+
+// --- 3. TRIAD STATUS ---
+triad_ok = triad_selection_mode == "Off" ? false : triad_selection_mode == "Auto" ? (auto_cfg.detected and auto_cfg.isTriadMode) : is_in_manual
+match_1 = f_check_match(st1)
+match_2 = f_check_match(st2)
+match_3 = f_check_match(st3)
+
+// --- 4. ASSIGNMENT LOGIC ---
+array.set(arr_inv, 0, false)
+array.set(arr_inv, 1, false)
+
+if triad_ok
+    if triad_selection_mode == "Manual" and is_in_manual
+        if match_1
+            tsym2 := st2
+            tsym3 := st3
+            if (is_in_manual_m1 and inv_m1) or (is_in_manual_m2 and inv_m2) or (is_in_manual_m3 and inv_m3) or (is_in_manual_m4 and inv_m4)
+                array.set(arr_inv, 1, true)
+        else if match_2
+            tsym2 := st1
+            tsym3 := st3
+            if (is_in_manual_m1 and inv_m1) or (is_in_manual_m2 and inv_m2) or (is_in_manual_m3 and inv_m3) or (is_in_manual_m4 and inv_m4)
+                array.set(arr_inv, 1, true)
+        else if match_3
+            tsym2 := st1
+            tsym3 := st2
+            if (is_in_manual_m1 and inv_m1) or (is_in_manual_m2 and inv_m2) or (is_in_manual_m3 and inv_m3) or (is_in_manual_m4 and inv_m4)
+                array.set(arr_inv, 0, true)
+                array.set(arr_inv, 1, true)
+        
+        if tsym2 == sym or f_get_bare_ticker(tsym2) == current_ticker
+            tsym2 := tsym2
+        
+        csym  := syminfo.type == "futures" ? (ticker.modify(tsym2,session = syminfo.session,backadjustment=badj ? backadjustment.off:backadjustment.on) ) :tsym2
+        tsym3 := syminfo.type == "futures" ? (ticker.modify(tsym3,session = syminfo.session,backadjustment=badj ? backadjustment.off:backadjustment.on) ) :tsym3
+    
+    else if triad_selection_mode == "Auto"
+        csym  := auto_cfg.secondary
+        tsym3 := auto_cfg.tertiary
+        array.set(arr_inv, 0, auto_cfg.invertSecondary)
+        array.set(arr_inv, 1, auto_cfg.invertTertiary)
+
+if not triad_ok and dyad_selection_mode != "Off"
+    if dyad_selection_mode == "Manual"
+        is_on_dyad_m1 = enable_dyad_m1 and dyad_m1_sym1 != "" and dyad_m1_sym2 != "" and (f_check_match(dyad_m1_sym1) or f_check_match(dyad_m1_sym2))
+        is_on_dyad_m2 = enable_dyad_m2 and dyad_m2_sym1 != "" and dyad_m2_sym2 != "" and (f_check_match(dyad_m2_sym1) or f_check_match(dyad_m2_sym2))
+        is_on_dyad_m3 = enable_dyad_m3 and dyad_m3_sym1 != "" and dyad_m3_sym2 != "" and (f_check_match(dyad_m3_sym1) or f_check_match(dyad_m3_sym2))
+        is_on_dyad_m4 = enable_dyad_m4 and dyad_m4_sym1 != "" and dyad_m4_sym2 != "" and (f_check_match(dyad_m4_sym1) or f_check_match(dyad_m4_sym2))
+        
+        if is_on_dyad_m1
+            csym := f_check_match(dyad_m1_sym1) ? dyad_m1_sym2 : dyad_m1_sym1
+            if inv_dyad_m1 and f_check_match(dyad_m1_sym1)
+                array.set(arr_inv, 0, true)
+        else if is_on_dyad_m2
+            csym := f_check_match(dyad_m2_sym1) ? dyad_m2_sym2 : dyad_m2_sym1
+            if inv_dyad_m2 and f_check_match(dyad_m2_sym1)
+                array.set(arr_inv, 0, true)
+        else if is_on_dyad_m3
+            csym := f_check_match(dyad_m3_sym1) ? dyad_m3_sym2 : dyad_m3_sym1
+            if inv_dyad_m3 and f_check_match(dyad_m3_sym1)
+                array.set(arr_inv, 0, true)
+        else if is_on_dyad_m4
+            csym := f_check_match(dyad_m4_sym1) ? dyad_m4_sym2 : dyad_m4_sym1
+            if inv_dyad_m4 and f_check_match(dyad_m4_sym1)
+                array.set(arr_inv, 0, true)
+        
+        csym  := syminfo.type == "futures" ? (ticker.modify(csym,session = syminfo.session,backadjustment=badj ? backadjustment.on:backadjustment.off) ) :csym
+
+    else if dyad_selection_mode == "Auto" and auto_cfg.detected
+        csym := auto_cfg.secondary
+        array.set(arr_inv, 0, auto_cfg.invertSecondary)
+
+dyad_ok = sym != csym
+
+[xc0,xo0,xh0,xl0,xt0,xatr]=request.security(csym,tf,[close,open,high,low,time,ta.atr(20)],lookahead = barmerge.lookahead_on,ignore_invalid_symbol = true)
+ssmt_pair  = str.tostring(syminfo.ticker(csym))
+[yc0,yo0,yh0,yl0,yt0,yatr]=request.security( tsym3,tf,[close,open,high,low,time,ta.atr(20)],lookahead = barmerge.lookahead_on,ignore_invalid_symbol = true)
+ssmt_pair2 = str.tostring(syminfo.ticker(tsym3))
+
+////////////////////////////////////////////////
+f_main_process(_tf_ok, _tf_ok_V, _val_ses, op, cls, hi, lo, ti) =>
+    var hmax   = hi , var hmax1 = hi , var hmax2 = hi
+    var lmin   = lo , var lmin1 = lo , var lmin2 = lo
+    var hmaxt  = ti,  var lmint   = ti
+    var hmaxt1 = ti,  var lmint1  = ti
+    var clsmax  = math.max(cls,op), var clsmaxt = ti
+    var clsmin  = math.min(cls,op), var clsmint = ti
+    var clsmax1 = math.max(cls,op), var clsmaxt1 = ti
+    var clsmin1 = math.min(cls,op), var clsmint1 = ti
+    if _tf_ok
+        if _val_ses  !=  _val_ses[1]
+            hmax  := hi
+            lmin  := lo
+            hmaxt := ti
+            lmint := ti
+            clsmax  := math.max(cls,op)
+            clsmaxt := ti
+            clsmin  := math.min(cls,op)
+            clsmint := ti
+
+        if _val_ses == _val_ses[1]
+            if hi >= hmax
+                hmax  := hi
+                hmaxt := ti
+            if lo <= lmin
+                lmin  := lo
+                lmint := ti
+            if math.max(cls,op) >= clsmax
+                clsmax := math.max(cls,op)
+                clsmaxt:= ti
+            if math.min(cls,op) <= clsmin
+                clsmin := math.min(cls,op)
+                clsmint:= ti
+
+        if _val_ses  !=  _val_ses[1]
+            hmax1 := hmax[1]
+            lmin1 := lmin[1]
+            hmax2 := hmax1[1]
+            lmin2 := lmin1[1]
+            hmaxt1 := hmaxt[1]
+            lmint1 := lmint[1]
+            clsmax1  := clsmax[1]
+            clsmaxt1 := clsmaxt[1]
+            clsmin1  := clsmin[1]
+            clsmint1 := clsmint[1]
+
+    [hmaxt, lmint, hmax2, lmin2, hmax1, lmin1, hmax, lmin, hmaxt1, lmint1, clsmax, clsmax1, clsmaxt1, clsmin, clsmin1, clsmint1, clsmaxt, clsmint]
+
+/////////////////////////////////////////////////////////////////////////////SMT
+f_ssmt(ah2,ah1,ah0,al2,al1,al0,bh2,bh1,bh0,bl2,bl1,bl0,_hmaxt,_lmint,_hmaxt1,_lmint1,_tfok,_val_ses,showon,_smt_clr,_smt_txt_clr,_tf_ok_V,lbl,name,pair,_inv, _time_limit)=>
+    _bear1 = ((ah2 >= ah1 and bh2 <= bh1) or (ah2 <= ah1 and bh2 >= bh1) ) and not(ah2 == ah1 and bh2 == bh1) and not _inv
+    _bear0 = ((ah1 >= ah0 and bh1 <= bh0) or (ah1 <= ah0 and bh1 >= bh0) ) and not(ah1 == ah0 and bh1 == bh0) and not _inv
+    _bull1 = ((al2 <= al1 and bl2 >= bl1) or (al2 >= al1 and bl2 <= bl1) ) and not(al2 == al1 and bl2 == bl1) and not _inv
+    _bull0 = ((al1 <= al0 and bl1 >= bl0) or (al1 >= al0 and bl1 <= bl0) ) and not(al1 == al0 and bl1 == bl0) and not _inv
+
+    if _inv
+        _bear1 := ((ah2 >= ah1 and bl2 >= bl1) or (ah2 <= ah1 and bl2 <= bl1) ) and not(ah2 == ah1 and bl2 == bl1)
+        _bear0 := ((ah1 >= ah0 and bl1 >= bl0) or (ah1 <= ah0 and bl1 <= bl0) ) and not(ah1 == ah0 and bl1 == bl0)
+        _bull1 := ((al2 <= al1 and bh2 <= bh1) or (al2 >= al1 and bh2 >= bh1) ) and not(al2 == al1 and bh2 == bh1)
+        _bull0 := ((al1 <= al0 and bh1 <= bh0) or (al1 >= al0 and bh1 >= bh0) ) and not(al1 == al0 and bh1 == bh0)
+
+    tooltiplbl = pair == 2 ? name +" " + ssmt_pair  :name +" " + ssmt_pair2
+    lblstyleh = label.style_label_down
+    lblstylel = label.style_label_up
+    var smtbeh = line.new(na,na,na,na)
+    var smtbul = line.new(na,na,na,na)
+    var smtbe  = label.new(na,na)
+    var smtbu  = label.new(na,na)
+    label ret_smtbe = na
+    label ret_smtbu = na
+
+    var arr_beh = array.new_line()
+    var arr_lbh = array.new_label()
+    var arr_bul = array.new_line()
+    var arr_lbl = array.new_label()
+
+    _draw_clr = _tf_ok_V ? (hidelines ? color.new(_smt_clr, 100) : _smt_clr) : color.new(_smt_clr, 100)
+    _draw_txt_clr = _tf_ok_V ? _smt_txt_clr : color.new(color.white, 100)
+
+    if (_bull0 or _bear0 )and showon and _tfok 
+        if (_val_ses[1] != _val_ses or not _bear0[1] or _hmaxt != _hmaxt[1] ) and  _bear0
+            smtbeh   := line.new(x1 = _hmaxt1 , y1 = ah1 , x2 = _hmaxt , y2 = ah0 , xloc=xloc.bar_time,color= _draw_clr,width = 1,style=normstyle)
+            if not hidelabels
+                smtbe    := label.new(x=math.round(_hmaxt+_hmaxt1)/2, y = math.round_to_mintick(ah1+ah0)/2,text = lbl ,xloc = xloc.bar_time,yloc = yloc.price,color = color.new(color.white, 100),
+                  style=lblstyleh,textcolor = _draw_txt_clr, size = i_font,tooltip = tooltiplbl)
+                ret_smtbe := smtbe
+                add_to_label_array(arr_lbh,smtbe)
+            add_to_line_array(arr_beh,smtbeh)
+
+        if (_val_ses[1] != _val_ses or not _bull0[1] or _lmint != _lmint[1] ) and  _bull0
+            smtbul := line.new(x1 = _lmint1 , y1 = al1 , x2 = _lmint , y2 = al0 , xloc=xloc.bar_time,color= _draw_clr,width = 1,style = normstyle)
+            if not hidelabels
+                smtbu  := label.new(x=math.round(_lmint+_lmint1)/2, y = math.round_to_mintick(al1+al0)/2,text = lbl ,xloc = xloc.bar_time,yloc = yloc.price,color = color.new(color.white, 100),
+                  style=lblstylel,textcolor = _draw_txt_clr, size = i_font,tooltip = tooltiplbl)
+                ret_smtbu := smtbu
+                add_to_label_array(arr_lbl,smtbu)
+            add_to_line_array(arr_bul,smtbul)
+
+    if array.size(arr_beh) > 0 and showon and _tfok 
+        if _val_ses == _val_ses[1] and _bear0[1] and not _bear0
+            line.delete(smtbeh)
+            array.remove(arr_beh,0)
+            if not hidelabels and array.size(arr_lbh) > 0
+                label.delete(smtbe)
+                array.remove(arr_lbh,0)
+        if array.size(arr_beh) > 0 and showon
+            for i = array.size(arr_beh) -1 to 0
+                dline = array.get(arr_beh,i)
+                top    = line.get_y2(dline)
+                tme    = line.get_x2(dline)
+                if time > tme and high >= top
+                    line.delete(dline)
+                    array.remove(arr_beh,i)
+                    if not hidelabels and array.size(arr_lbh) > 0
+                        dlbl   = array.get(arr_lbh,i)
+                        label.delete(dlbl)
+                        array.remove(arr_lbh,i)
+
+    if array.size(arr_bul) > 0 and showon and _tfok 
+        if _val_ses == _val_ses[1] and _bull0[1] and not _bull0
+            line.delete(smtbul)
+            array.remove(arr_bul,0)
+            if not hidelabels and array.size(arr_lbl) > 0
+                label.delete(smtbu)
+                array.remove(arr_lbl,0)
+        if array.size(arr_bul) > 0 and showon and _tfok 
+            for i = array.size(arr_bul) -1 to 0
+                dline = array.get(arr_bul,i)
+                bot    = line.get_y2(dline)
+                tme    = line.get_x2(dline)
+                if time > tme and low <= bot
+                    line.delete(dline)
+                    array.remove(arr_bul,i)
+                    if not hidelabels and array.size(arr_lbl) > 0
+                        dlbl   = array.get(arr_lbl,i)
+                        label.delete(dlbl)
+                        array.remove(arr_lbl,i)
+
+    _is_act_beh = false
+    if array.size(arr_beh) > 0
+        if _time_limit > 0
+            for i = 0 to array.size(arr_beh) - 1
+                if line.get_x2(array.get(arr_beh, i)) >= _time_limit
+                    _is_act_beh := true
+                    break
+        else
+            _is_act_beh := true
+
+    _is_act_bul = false
+    if array.size(arr_bul) > 0
+        if _time_limit > 0
+            for i = 0 to array.size(arr_bul) - 1
+                if line.get_x2(array.get(arr_bul, i)) >= _time_limit
+                    _is_act_bul := true
+                    break
+        else
+            _is_act_bul := true
+
+    float h_c  = ta.valuewhen(time == _hmaxt, close, 0)
+    float h_o  = ta.valuewhen(time == _hmaxt, open, 0)
+    float h_po = ta.valuewhen(time == _hmaxt, open[1], 0)
+    float l_c  = ta.valuewhen(time == _lmint, close, 0)
+    float l_o  = ta.valuewhen(time == _lmint, open, 0)
+    float l_po = ta.valuewhen(time == _lmint, open[1], 0)
+
+    int tfs = timeframe.in_seconds(timeframe.period)
+    bool qcisd_vis = false
+    string ssmt_src = ""
+    
+    if name == "Micro"
+        qcisd_vis := tfs >= 60 and tfs <= 120
+        ssmt_src := "Mic"
+    else if name == "90m"
+        qcisd_vis := tfs >= 180 and tfs <= 600
+        ssmt_src := "90m"
+    else if name == "Daily"
+        qcisd_vis := tfs >= 900 and tfs <= 1800
+        ssmt_src := "D"
+    else if name == "Weekly"
+        qcisd_vis := tfs >= 3600 and tfs <= 10800
+        ssmt_src := "W"
+    else if name == "Monthly"
+        qcisd_vis := tfs >= 14400 and tfs <= 21600
+        ssmt_src := "M"
+    else if name == "Quarterly"
+        qcisd_vis := tfs == 86400
+        ssmt_src := "Q"
+    else if name == "Yearly"
+        qcisd_vis := tfs >= 604800 and tfs <= timeframe.in_seconds("1M")
+        ssmt_src := "Y"
+
+    bool new_bear_signal  = _bear0 and not _bear0[1]
+    bool bear_pivot_moved = _bear0 and _hmaxt != _hmaxt[1]
+    bool new_bull_signal  = _bull0 and not _bull0[1]
+    bool bull_pivot_moved = _bull0 and _lmint != _lmint[1]
+    
+    int ext_len_qcisd = timeframe.in_seconds(timeframe.period) * 1000 * 10
+    int bar_ms = timeframe.in_seconds(timeframe.period) * 1000
+    string font_fam = qcisd_mono ? font.family_monospace : font.family_default
+    string p_name = pair == 2 ? ssmt_pair : ssmt_pair2
+
+    if showon and _tfok and show_qcisd and qcisd_vis
+        
+        if new_bear_signal or bear_pivot_moved
+            float lvl = (h_c > h_o) ? h_o : h_po
+            bool is_hp = bias_input == "Bearish"
+
+            if not na(lvl)
+                bool skip_creation = false
+                
+                if array.size(g_q_dirs) > 0
+                    for i = array.size(g_q_dirs) - 1 to 0
+                        if array.get(g_q_dirs, i) == -1 and array.get(g_q_names, i) == name
+                            float ex_x1 = line.get_x1(array.get(g_q_lines, i))
+                            if ex_x1 == _hmaxt or ex_x1 == (_hmaxt - bar_ms)
+                                if array.get(g_q_hp, i) == is_hp
+                                    skip_creation := true 
+                                else
+                                    line.delete(array.remove(g_q_lines, i))
+                                    label.delete(array.remove(g_q_lbls, i))
+                                    array.remove(g_q_dirs, i)
+                                    array.remove(g_q_hp, i)
+                                    array.remove(g_q_conf, i)
+                                    array.remove(g_q_names, i)
+                                    array.remove(g_q_pairs, i)
+                            else if bear_pivot_moved
+                                line.delete(array.remove(g_q_lines, i))
+                                label.delete(array.remove(g_q_lbls, i))
+                                array.remove(g_q_dirs, i)
+                                array.remove(g_q_hp, i)
+                                array.remove(g_q_conf, i)
+                                array.remove(g_q_names, i)
+                                array.remove(g_q_pairs, i)
+
+                if not skip_creation
+                    bool is_conf = close < lvl
+                    string style_to_use = is_conf ? line.style_solid : line.style_dashed
+                    string hp_txt = is_hp ? "HP " : ""
+                    string bear_lbl_text = "(-) " + hp_txt + ssmt_src + "_QCISD"
+
+                    line l = na
+                    label lb = na
+                    if h_c > h_o
+                        l := line.new(x1=_hmaxt, y1=lvl, x2=time + ext_len_qcisd, y2=lvl, xloc=xloc.bar_time, color=qcisd_bear_clr, style=style_to_use, width=qcisd_width)
+                        lb := label.new(x=time + ext_len_qcisd, y=lvl, text=bear_lbl_text, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=qcisd_text_clr, size=qcisd_lbl_size, text_font_family=font_fam)
+                    else
+                        l := line.new(x1=_hmaxt - bar_ms, y1=lvl, x2=time + ext_len_qcisd, y2=lvl, xloc=xloc.bar_time, color=qcisd_bear_clr, style=style_to_use, width=qcisd_width)
+                        lb := label.new(x=time + ext_len_qcisd, y=lvl, text=bear_lbl_text, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=qcisd_text_clr, size=qcisd_lbl_size, text_font_family=font_fam)
+
+                    array.unshift(g_q_lines, l)
+                    array.unshift(g_q_lbls, lb)
+                    array.unshift(g_q_dirs, -1)
+                    array.unshift(g_q_hp, is_hp)
+                    array.unshift(g_q_conf, is_conf)
+                    array.unshift(g_q_names, name)
+                    array.unshift(g_q_pairs, p_name)
+
+        if new_bull_signal or bull_pivot_moved
+            float lvl = (l_c < l_o) ? l_o : l_po
+            bool is_hp = bias_input == "Bullish"
+
+            if not na(lvl)
+                bool skip_creation = false
+                
+                if array.size(g_q_dirs) > 0
+                    for i = array.size(g_q_dirs) - 1 to 0
+                        if array.get(g_q_dirs, i) == 1 and array.get(g_q_names, i) == name
+                            float ex_x1 = line.get_x1(array.get(g_q_lines, i))
+                            if ex_x1 == _lmint or ex_x1 == (_lmint - bar_ms)
+                                if array.get(g_q_hp, i) == is_hp
+                                    skip_creation := true 
+                                else
+                                    line.delete(array.remove(g_q_lines, i))
+                                    label.delete(array.remove(g_q_lbls, i))
+                                    array.remove(g_q_dirs, i)
+                                    array.remove(g_q_hp, i)
+                                    array.remove(g_q_conf, i)
+                                    array.remove(g_q_names, i)
+                                    array.remove(g_q_pairs, i)
+                            else if bull_pivot_moved
+                                line.delete(array.remove(g_q_lines, i))
+                                label.delete(array.remove(g_q_lbls, i))
+                                array.remove(g_q_dirs, i)
+                                array.remove(g_q_hp, i)
+                                array.remove(g_q_conf, i)
+                                array.remove(g_q_names, i)
+                                array.remove(g_q_pairs, i)
+
+                if not skip_creation
+                    bool is_conf = close > lvl
+                    string style_to_use = is_conf ? line.style_solid : line.style_dashed
+                    string hp_txt = is_hp ? "HP " : ""
+                    string bull_lbl_text = "(+) " + hp_txt + ssmt_src + "_QCISD"
+
+                    line l = na
+                    label lb = na
+                    if l_c < l_o
+                        l := line.new(x1=_lmint, y1=lvl, x2=time + ext_len_qcisd, y2=lvl, xloc=xloc.bar_time, color=qcisd_bull_clr, style=style_to_use, width=qcisd_width)
+                        lb := label.new(x=time + ext_len_qcisd, y=lvl, text=bull_lbl_text, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=qcisd_text_clr, size=qcisd_lbl_size, text_font_family=font_fam)
+                    else
+                        l := line.new(x1=_lmint - bar_ms, y1=lvl, x2=time + ext_len_qcisd, y2=lvl, xloc=xloc.bar_time, color=qcisd_bull_clr, style=style_to_use, width=qcisd_width)
+                        lb := label.new(x=time + ext_len_qcisd, y=lvl, text=bull_lbl_text, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.white, 100), textcolor=qcisd_text_clr, size=qcisd_lbl_size, text_font_family=font_fam)
+
+                    array.unshift(g_q_lines, l)
+                    array.unshift(g_q_lbls, lb)
+                    array.unshift(g_q_dirs, 1)
+                    array.unshift(g_q_hp, is_hp)
+                    array.unshift(g_q_conf, is_conf)
+                    array.unshift(g_q_names, name)
+                    array.unshift(g_q_pairs, p_name)
+
+    [_bear1,_bear0,_bull1,_bull0, ret_smtbe, ret_smtbu, _is_act_beh, _is_act_bul]
+
+////////////////////////////////////////////////////////////////
+f_hidden_ssmt(_clsmax,_clsmax1,_clsmin,_clsmin1,_clsmaxt,_clsmaxt1,_clsmint,_clsmint1,_cclsmax,_cclsmax1,_cclsmin,_cclsmin1,
+  _tfok,showon,_smt_clr,_smt_txt_clr,_val_ses,_tf_ok_V,lbl,name,pair,_inv, _time_limit)=>
+
+    _hbear0 = ( (_clsmax >= _clsmax1 and _cclsmax <= _cclsmax1) or (_clsmax <= _clsmax1 and _cclsmax >= _cclsmax1) ) and
+      not (_clsmax == _clsmax1 and _cclsmax == _cclsmax1) and not _inv
+    _lbull0 = ( (_clsmin >= _clsmin1 and _cclsmin <= _cclsmin1) or (_clsmin <= _clsmin1 and _cclsmin >= _cclsmin1) ) and
+      not (_clsmin == _clsmin1 and _cclsmin == _cclsmin1) and not _inv
+
+    if _inv
+        _hbear0 := ( (_clsmax >= _clsmax1 and _cclsmin >= _cclsmin1) or (_clsmax <= _clsmax1 and _cclsmin <= _cclsmin1) ) and
+          not (_clsmax == _clsmax1 and _cclsmin == _cclsmin1)
+        _lbull0 := ( (_clsmin >= _clsmin1 and _cclsmax >= _cclsmax1) or (_clsmin <= _clsmin1 and _cclsmax <= _cclsmax1) ) and
+          not (_clsmin == _clsmin1 and _cclsmax == _cclsmax1)
+
+    tooltiplbl = pair == 2 ? name +" hd " + ssmt_pair  :name +" hd " + ssmt_pair2
+    lblstyleh = label.style_label_down
+    lblstylel = label.style_label_up
+
+    var hsmtbeh = line.new(na,na,na,na)
+    var hsmtbul = line.new(na,na,na,na)
+    var hsmtbe  = label.new(na,na)
+    var hsmtbu  = label.new(na,na)
+    label ret_hsmtbe = na
+    label ret_hsmtbu = na
+
+    var harr_beh = array.new_line()
+    var harr_lbh = array.new_label()
+    var harr_bul = array.new_line()
+    var harr_lbl = array.new_label()
+
+    _draw_clr = _tf_ok_V ? (hidelines ? color.new(_smt_clr, 100) : _smt_clr) : color.new(_smt_clr, 100)
+    _draw_txt_clr = _tf_ok_V ? _smt_txt_clr : color.new(color.white, 100)
+
+    if showon and _tfok 
+        if (_val_ses[1] != _val_ses or not _hbear0[1] or _clsmaxt != _clsmaxt[1] ) and  _hbear0
+            hsmtbeh := line.new(x1 = _clsmaxt1 , y1 = _clsmax1 , x2 = _clsmaxt , y2 = _clsmax , xloc=xloc.bar_time,color= _draw_clr,width = 1,style=hiddstyle)
+            add_to_line_array(harr_beh,hsmtbeh)
+            if not hidelabels
+                hsmtbe    := label.new(x=math.round(_clsmaxt+_clsmaxt1)/2, y = math.round_to_mintick(_clsmax1+_clsmax)/2,text = lbl ,xloc = xloc.bar_time,yloc = yloc.price,color = color.new(color.white, 100),
+                  style=lblstyleh,textcolor = _draw_txt_clr, size = i_font,tooltip = tooltiplbl)
+                ret_hsmtbe := hsmtbe
+                add_to_label_array(harr_lbh,hsmtbe)
+
+        if (_val_ses[1] != _val_ses or not _lbull0[1] or _clsmint != _clsmint[1] ) and  _lbull0
+            hsmtbul := line.new(x1 = _clsmint1 , y1 = _clsmin1 , x2 = _clsmint , y2 = _clsmin , xloc=xloc.bar_time,color= _draw_clr,width = 1,style = hiddstyle)
+            add_to_line_array(harr_bul,hsmtbul)
+            if not hidelabels
+                hsmtbu  := label.new(x=math.round(_clsmint+_clsmint1)/2, y = math.round_to_mintick(_clsmin1+_clsmin)/2,text = lbl ,xloc = xloc.bar_time,yloc = yloc.price,color = color.new(color.white, 100),
+                  style=lblstylel,textcolor = _draw_txt_clr, size = i_font,tooltip = tooltiplbl)
+                ret_hsmtbu := hsmtbu
+                add_to_label_array(harr_lbl,hsmtbu)
+
+    if array.size(harr_beh) > 0 and showon and _tfok 
+        if _val_ses == _val_ses[1] and _hbear0[1] and not _hbear0
+            line.delete(hsmtbeh)
+            array.remove(harr_beh,0)
+            if not hidelabels and array.size(harr_lbh) > 0
+                label.delete(hsmtbe)
+                array.remove(harr_lbh,0)
+        if array.size(harr_beh) > 0 and showon and _tfok 
+            for i = array.size(harr_beh) -1 to 0
+                dline = array.get(harr_beh,i)
+                top    = line.get_y2(dline)
+                tme    = line.get_x2(dline)
+                if time > tme and math.max(open,close) >= top
+                    line.delete(dline)
+                    array.remove(harr_beh,i)
+                    if not hidelabels and array.size(harr_lbh) > 0
+                        dlbl   = array.get(harr_lbh,i)
+                        label.delete(dlbl)
+                        array.remove(harr_lbh,i)
+
+    if array.size(harr_bul) > 0 and showon and _tfok 
+        if _val_ses == _val_ses[1] and _lbull0[1] and not _lbull0
+            line.delete(hsmtbul)
+            array.remove(harr_bul,0)
+            if not hidelabels and array.size(harr_lbl) > 0
+                label.delete(hsmtbu)
+                array.remove(harr_lbl,0)
+        if array.size(harr_bul) > 0 and showon and _tfok 
+            for i = array.size(harr_bul) -1 to 0
+                dline = array.get(harr_bul,i)
+                bot    = line.get_y2(dline)
+                tme    = line.get_x2(dline)
+                if time > tme and math.min(open,close) <= bot
+                    line.delete(dline)
+                    array.remove(harr_bul,i)
+                    if not hidelabels and array.size(harr_lbl) > 0
+                        dlbl   = array.get(harr_lbl,i)
+                        label.delete(dlbl)
+                        array.remove(harr_lbl,i)
+
+    _is_act_hbeh = false
+    if array.size(harr_beh) > 0
+        if _time_limit > 0
+            for i = 0 to array.size(harr_beh) - 1
+                if line.get_x2(array.get(harr_beh, i)) >= _time_limit
+                    _is_act_hbeh := true
+                    break
+        else
+            _is_act_hbeh := true
+
+    _is_act_hbul = false
+    if array.size(harr_bul) > 0
+        if _time_limit > 0
+            for i = 0 to array.size(harr_bul) - 1
+                if line.get_x2(array.get(harr_bul, i)) >= _time_limit
+                    _is_act_hbul := true
+                    break
+        else
+            _is_act_hbul := true
+
+    [_hbear0,_lbull0, ret_hsmtbe, ret_hsmtbu, _is_act_hbeh, _is_act_hbul]
+
+////////////////////////////////////////////////////////////////
+M_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+W_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+D_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+Q_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+Y_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+N_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+m_SSMT  = array.from(false,false,false,false,false,false,false,false,false,false,false,false,false,false)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+f_allrun(_tf_ok,_tf_ok_V,_val_ses,name,_show_smt, _smt_clr,_hsmt_clr,_smt_txt_clr,_show_hsmt,X_SSMT,shortname, _time_limit)=>
+    [hmaxt,lmint,hmax2,lmin2,hmax1,lmin1,hmax,lmin,hmaxt1,lmint1,clsmax,clsmax1,clsmaxt1,clsmin,clsmin1,clsmint1,clsmaxt,clsmint] = f_main_process(_tf_ok,_tf_ok_V, _val_ses,open,close,high,low,time)
+    [chmaxt,clmint,chmax2,clmin2,chmax1,clmin1,chmax,clmin,chmaxt1,clmint1,cclsmax,cclsmax1,cclsmaxt1,cclsmin,cclsmin1,cclsmint1,cclsmaxt,cclsmint] = f_main_process(_tf_ok,_tf_ok_V, _val_ses,xo0,xc0,xh0,xl0,xt0)
+
+    nm1 = ssmt_pair
+    nm2 = ssmt_pair2
+    label l_be1 = na, label l_bu1 = na
+    label l_hbe1 = na, label l_hbu1 = na
+    label l_be2 = na, label l_bu2 = na
+    label l_hbe2 = na, label l_hbu2 = na
+
+    if alerttype != "Hidden"
+        [bear1,bear0,bull1,bull0, l_be1_t, l_bu1_t, has_act_be1, has_act_bu1] = f_ssmt(hmax2,hmax1,hmax,lmin2,lmin1,lmin,
+          chmax2,chmax1,chmax,clmin2,clmin1,clmin,
+          hmaxt,lmint,hmaxt1,lmint1,_tf_ok,_val_ses,_show_smt, _smt_clr,_smt_txt_clr,
+          _tf_ok_V,shortname +" "+ nm1 ,name,2,array.get(arr_inv,0), _time_limit)
+        l_be1 := l_be1_t
+        l_bu1 := l_bu1_t
+        array.set(X_SSMT,0,bear1)
+        array.set(X_SSMT,1,bear0)
+        array.set(X_SSMT,2,bull1)
+        array.set(X_SSMT,3,bull0)
+        array.set(X_SSMT,10,has_act_be1)
+        array.set(X_SSMT,11,has_act_bu1)
+    if alerttype != "Normal"
+        [hidbear2,hidbull2, l_hbe1_t, l_hbu1_t, has_act_hbe1, has_act_hbu1] = f_hidden_ssmt(clsmax,clsmax1,clsmin,clsmin1,clsmaxt,clsmaxt1,
+          clsmint,clsmint1,cclsmax,cclsmax1,cclsmin,cclsmin1,_tf_ok,_show_hsmt,_hsmt_clr,_smt_txt_clr,
+          _val_ses,_tf_ok_V,shortname +" (hd) "+ nm1,name,2,array.get(arr_inv,0), _time_limit)
+        l_hbe1 := l_hbe1_t
+        l_hbu1 := l_hbu1_t
+        array.set(X_SSMT,4,hidbear2)
+        array.set(X_SSMT,5,hidbull2)
+        array.set(X_SSMT,12,has_act_hbe1)
+        array.set(X_SSMT,13,has_act_hbu1)
+    if triad_ok and showsmt2 and _tf_ok
+        [dhmaxt,dlmint,dhmax2,dlmin2,dhmax1,dlmin1,dhmax,dlmin,dhmaxt1,dlmint1,dclsmax,dclsmax1,dclsmaxt1,dclsmin,dclsmin1,dclsmint1,dclsmaxt,dclsmint] = f_main_process(_tf_ok,_tf_ok_V, _val_ses,yo0,yc0,yh0,yl0,yt0)
+        if alerttype != "Hidden"
+            [bear13,bear03,bull13,bull03, l_be2_t, l_bu2_t, has_act_be2, has_act_bu2] = f_ssmt(hmax2,hmax1,hmax,lmin2,lmin1,lmin,
+              dhmax2,dhmax1,dhmax,dlmin2,dlmin1,dlmin,
+              hmaxt,lmint,hmaxt1,lmint1,_tf_ok,_val_ses,_show_smt, _smt_clr,_smt_txt_clr,
+              _tf_ok_V,shortname +" "+ nm2,name,3,array.get(arr_inv,1), _time_limit)
+            l_be2 := l_be2_t
+            l_bu2 := l_bu2_t
+            if bear03
+                array.set(X_SSMT,6,bear03)
+            if bull03
+                array.set(X_SSMT,7,bull03)
+            array.set(X_SSMT,10, array.get(X_SSMT,10) or has_act_be2)
+            array.set(X_SSMT,11, array.get(X_SSMT,11) or has_act_bu2)
+        if alerttype != "Normal"
+            [hidbear3,hidbull3, l_hbe2_t, l_hbu2_t, has_act_hbe2, has_act_hbu2] = f_hidden_ssmt(clsmax,clsmax1,clsmin,clsmin1,clsmaxt,clsmaxt1,
+              clsmint,clsmint1,dclsmax,dclsmax1,dclsmin,dclsmin1,_tf_ok,_show_hsmt,_hsmt_clr,_smt_txt_clr,
+              _val_ses,_tf_ok_V,shortname +" (hd) "+ nm2,name,3,array.get(arr_inv,1), _time_limit)
+            l_hbe2 := l_hbe2_t
+            l_hbu2 := l_hbu2_t
+            if hidbear3
+                array.set(X_SSMT,8,true)
+            if hidbull3
+                array.set(X_SSMT,9,true)
+            array.set(X_SSMT,12, array.get(X_SSMT,12) or has_act_hbe2)
+            array.set(X_SSMT,13, array.get(X_SSMT,13) or has_act_hbu2)
+    if not na(l_be1) and not na(l_be2)
+        label.set_text(l_be1, shortname + " " + nm1 + " + " + nm2)
+        label.delete(l_be2)
+    if not na(l_bu1) and not na(l_bu2)
+        label.set_text(l_bu1, shortname + " " + nm1 + " + " + nm2)
+        label.delete(l_bu2)
+    if not na(l_hbe1) and not na(l_hbe2)
+        label.set_text(l_hbe1, shortname + " (hd) " + nm1 + " + " + nm2)
+        label.delete(l_hbe2)
+    if not na(l_hbu1) and not na(l_hbu2)
+        label.set_text(l_hbu1, shortname + " (hd) " + nm1 + " + " + nm2)
+        label.delete(l_hbu2)
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+f_allrun(tf_ok    ,tf_ok_V,    val_ses , "90m", show_smtN, smtN_clr,hsmtN_clr,smt_txt_all,show_hsmtN,N_SSMT, "90m", dayStart)
+f_allrun(tf_ok_mic,tf_ok_mic_V,val_sesm, "Micro", show_smtm, smtm_clr,hsmtm_clr,smt_txt_all,show_hsmtm,m_SSMT, "Mic.", dayStart)
+f_allrun(tf_okD   ,tf_okD_V  , val_sesD, "Daily", show_smtD, smtD_clr,hsmtD_clr,smt_txt_all,show_hsmtD,D_SSMT, "D", 0)
+f_allrun(tf_okW   ,tf_okW_V  , val_sesW, "Weekly", show_smtW, smtW_clr,hsmtW_clr,smt_txt_all,show_hsmtW,W_SSMT, "W", 0)
+f_allrun(tf_okMo  ,tf_okMo_V , val_sesMo, "Monthly", show_smtMo,smtMo_clr,hsmtMo_clr,smt_txt_all,show_hsmtMo,M_SSMT, "M", 0)
+f_allrun(tf_okQ   ,tf_okQ_V  , val_sesQ , "Quarterly", show_smtQ, smtQ_clr, hsmtQ_clr, smt_txt_all, show_hsmtQ, Q_SSMT, "Q", 0)
+f_allrun(tf_okY   ,tf_okY_V  , val_sesY , "Yearly", show_smtY, smtY_clr, hsmtY_clr, smt_txt_all, show_hsmtY, Y_SSMT, "Y", 0)
+///////////////////////////////////////////////////////////////Alerts
+f_alert(a_con1,a_con3,number)=>
+    var bull_alert_trigger = false
+    var bear_alert_trigger = false
+    
+    nbull_control_con1 =
+      a_con1 == Mobu ? array.get(M_SSMT,3) or array.get(M_SSMT,7) :
+      a_con1 == Wbu ? array.get(W_SSMT,3) or array.get(W_SSMT,7) :
+      a_con1 == Dbu ? array.get(D_SSMT,3) or array.get(D_SSMT,7) :
+      a_con1 == Qbu ? array.get(Q_SSMT,3) or array.get(Q_SSMT,7) :
+      a_con1 == Ybu ? array.get(Y_SSMT,3) or array.get(Y_SSMT,7) :
+      a_con1 == Nbu ? array.get(N_SSMT,3) or array.get(N_SSMT,7) :
+      a_con1 == mbu ? array.get(m_SSMT,3) or array.get(m_SSMT,7):
+      a_con1 == "none" ? true : false
+    nbear_control_con1 =
+      a_con1 == Mobe ? array.get(M_SSMT,1) or array.get(M_SSMT,6):
+      a_con1 == Wbe ? array.get(W_SSMT,1) or array.get(W_SSMT,6):
+      a_con1 == Dbe ? array.get(D_SSMT,1) or array.get(D_SSMT,6):
+      a_con1 == Qbe ? array.get(Q_SSMT,1) or array.get(Q_SSMT,6):
+      a_con1 == Ybe ? array.get(Y_SSMT,1) or array.get(Y_SSMT,6):
+      a_con1 == Nbe ? array.get(N_SSMT,1) or array.get(N_SSMT,6):
+      a_con1 == mbe ? array.get(m_SSMT,1) or array.get(m_SSMT,6):
+      a_con1 == "none" ? true : false
+
+    nbull_control_con3 =
+      a_con3 == Mobu ? array.get(M_SSMT,3) or array.get(M_SSMT,7) :
+      a_con3 == Wbu ? array.get(W_SSMT,3) or array.get(W_SSMT,7) :
+      a_con3 == Dbu ? array.get(D_SSMT,3) or array.get(D_SSMT,7) :
+      a_con3 == Qbu ? array.get(Q_SSMT,3) or array.get(Q_SSMT,7) :
+      a_con3 == Ybu ? array.get(Y_SSMT,3) or array.get(Y_SSMT,7) :
+      a_con3 == Nbu ? array.get(N_SSMT,3) or array.get(N_SSMT,7):
+      a_con3 == mbu ? array.get(m_SSMT,3) or array.get(m_SSMT,7):
+      a_con3 == "none" ? true : false
+    nbear_control_con3 =
+      a_con3 == Mobe ? array.get(M_SSMT,1) or array.get(M_SSMT,6) :
+      a_con3 == Wbe  ? array.get(W_SSMT,1) or array.get(W_SSMT,6) :
+      a_con3 == Dbe  ? array.get(D_SSMT,1) or array.get(D_SSMT,6) :
+      a_con3 == Qbe  ? array.get(Q_SSMT,1) or array.get(Q_SSMT,6) :
+      a_con3 == Ybe  ? array.get(Y_SSMT,1) or array.get(Y_SSMT,6) :
+      a_con3 == Nbe  ? array.get(N_SSMT,1) or array.get(N_SSMT,6):
+      a_con3 == mbe  ? array.get(m_SSMT,1) or array.get(m_SSMT,6):
+      a_con3 == "none" ? true : false
+
+    hbull_control_con1 =
+      a_con1 == Mobu ? array.get(M_SSMT,5) or array.get(M_SSMT,9) :
+      a_con1 == Wbu ? array.get(W_SSMT,5) or array.get(W_SSMT,9) :
+      a_con1 == Dbu ? array.get(D_SSMT,5) or array.get(D_SSMT,9):
+      a_con1 == Qbu ? array.get(Q_SSMT,5) or array.get(Q_SSMT,9):
+      a_con1 == Ybu ? array.get(Y_SSMT,5) or array.get(Y_SSMT,9):
+      a_con1 == Nbu ? array.get(N_SSMT,5) or array.get(N_SSMT,9):
+      a_con1 == mbu ? array.get(m_SSMT,5) or array.get(m_SSMT,9):
+      a_con1 == "none" ? true : false
+    hbear_control_con1 =
+      a_con1 == Mobe ? array.get(M_SSMT,4) or array.get(M_SSMT,8):
+      a_con1 == Wbe ? array.get(W_SSMT,4) or array.get(W_SSMT,8):
+      a_con1 == Dbe ? array.get(D_SSMT,4) or array.get(D_SSMT,8):
+      a_con1 == Qbe ? array.get(Q_SSMT,4) or array.get(Q_SSMT,8):
+      a_con1 == Ybe ? array.get(Y_SSMT,4) or array.get(Y_SSMT,8):
+      a_con1 == Nbe ? array.get(N_SSMT,4) or array.get(N_SSMT,8):
+      a_con1 == mbe ? array.get(m_SSMT,4) or array.get(m_SSMT,8):
+      a_con1 == "none" ? true : false
+    hbull_control_con3 =
+      a_con3 == Mobu ? array.get(M_SSMT,5) or array.get(M_SSMT,9) :
+      a_con3 == Wbu ? array.get(W_SSMT,5) or array.get(W_SSMT,9) :
+      a_con3 == Dbu ? array.get(D_SSMT,5) or array.get(D_SSMT,9):
+      a_con3 == Qbu ? array.get(Q_SSMT,5) or array.get(Q_SSMT,9):
+      a_con3 == Ybu ? array.get(Y_SSMT,5) or array.get(Y_SSMT,9):
+      a_con3 == Nbu ? array.get(N_SSMT,5) or array.get(N_SSMT,9):
+      a_con3 == mbu ? array.get(m_SSMT,5) or array.get(m_SSMT,9):
+      a_con3 == "none" ? true : false
+    hbear_control_con3 =
+      a_con3 == Mobe ? array.get(M_SSMT,4) or array.get(M_SSMT,8):
+      a_con3 == Wbe  ? array.get(W_SSMT,4) or array.get(W_SSMT,8):
+      a_con3 == Dbe  ? array.get(D_SSMT,4) or array.get(D_SSMT,8):
+      a_con3 == Qbe  ? array.get(Q_SSMT,4) or array.get(Q_SSMT,8):
+      a_con3 == Ybe  ? array.get(Y_SSMT,4) or array.get(Y_SSMT,8):
+      a_con3 == Nbe  ? array.get(N_SSMT,4) or array.get(N_SSMT,8):
+      a_con3 == mbe  ? array.get(m_SSMT,4) or array.get(m_SSMT,8):
+      a_con3 == "none" ? true : false
+
+    newcyc1 = str.contains(a_con1,"Y") ? newY : str.contains(a_con1,"Q") ? newQ : str.contains(a_con1,"M") ? newMo : str.contains(a_con1,"W") ? newW : str.contains(a_con1,"D") ?
+      newD : str.contains(a_con1,"N") ? newN : str.contains(a_con1,"m") ? newm : false
+    newcyc3 = str.contains(a_con3,"Y") ? newY : str.contains(a_con3,"Q") ? newQ : str.contains(a_con3,"M") ? newMo : str.contains(a_con3,"W") ? newW : str.contains(a_con3,"D") ?
+      newD : str.contains(a_con3,"N") ? newN : str.contains(a_con3,"m") ? newm : false
+    newcyc  = newcyc1 or newcyc3
+    if newcyc
+        bull_alert_trigger := false
+        bear_alert_trigger := false
+
+    bull_control_con1 =
+      alerttype == "All" ? nbull_control_con1 or hbull_control_con1 :
+      alerttype == "Normal" ? nbull_control_con1 : hbull_control_con1
+    bear_control_con1 =
+      alerttype == "All" ? nbear_control_con1 or hbear_control_con1 :
+      alerttype == "Normal" ? nbear_control_con1 : hbear_control_con1
+    bull_control_con3 =
+      alerttype == "All" ? nbull_control_con1 or hbull_control_con1 :
+      alerttype == "Normal" ? nbull_control_con1 : hbull_control_con1
+    bear_control_con3 =
+      alerttype == "All" ? nbear_control_con3 or hbear_control_con3 :
+      alerttype == "Normal" ? nbear_control_con3 : hbear_control_con3
+
+    bull_alert = bull_control_con1 and bull_control_con3  and not (a_con1 == "none" and a_con3 == "none" )
+    if bull_alert and bull_alert_trigger == false
+        alert(number+" 🟢 Bullish Selection Active " + '\n' + a_con1 +" " + a_con3  + '\n'+ " " ,alert.freq_once_per_bar)
+        bull_alert_trigger := true
+
+    bear_alert = bear_control_con1 and bear_control_con3   and not (a_con1 == "none" and a_con3 == "none" )
+    if bear_alert and bear_alert_trigger == false
+        alert(number+" 🔴 Bearish Selection Active "+ '\n' + a_con1 +" " + a_con3 + " " + '\n'+ " ",alert.freq_once_per_bar)
+        bear_alert_trigger := true
+
+    if bull_alert[1] and bull_alert == false
+        bull_alert_trigger := false
+    if bear_alert[1] and bear_alert == false
+        bear_alert_trigger := false
+if al1ok
+    f_alert(al_con1,al_con3,"1")
+if al2ok
+    f_alert(bl_con1,bl_con3,"2")
+if al3ok
+    f_alert(cl_con1,cl_con3,"3")
+if al4ok
+    f_alert(dl_con1,dl_con3,"4")
+
+// --- 2. STATE & VISIBILITY FOR PSP ---
+var label[] psp_labels = array.new<label>()
+bool psp_is_visible = timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds(psp_vis_limit)
+
+// --- 3. ADAPTIVE LOGIC FUNCTION FOR PSP ---
+f_calc_psp_adaptive(_show) =>
+    bool _bull_signal = false
+    bool _bear_signal = false
+
+    if _show
+        float m_c = close
+        float m_o = open
+        float c1_c = xc0
+        float c1_o = xo0
+        float c2_c = yc0
+        float c2_o = yo0
+
+        bool c1_sync = (xt0 == time)
+        bool c2_sync = (yt0 == time)
+
+        int m_dir  = m_c > m_o ? 1 : m_c < m_o ? -1 : 0
+        int c1_dir = c1_sync ? (c1_c > c1_o ? 1 : c1_c < c1_o ? -1 : 0) : 0
+        int c2_dir = c2_sync ? (c2_c > c2_o ? 1 : c2_c < c2_o ? -1 : 0) : 0
+
+        bool inv_1 = array.get(arr_inv, 0)
+        bool inv_2 = array.get(arr_inv, 1)
+
+        if inv_1
+            c1_dir := -c1_dir
+        if inv_2
+            c2_dir := -c2_dir
+
+        bool is_valid_correlation = triad_ok or dyad_ok
+        bool crack_1 = is_valid_correlation and showsmt1 and not na(c1_c) and (m_dir != 0) and (c1_dir != 0) and (m_dir != c1_dir)
+        bool crack_2 = triad_ok and showsmt2 and not na(c2_c) and (m_dir != 0) and (c2_dir != 0) and (m_dir != c2_dir)
+
+        if crack_1 or crack_2
+            _bull_signal := (m_dir == 1)
+            _bear_signal := (m_dir == -1)
+
+    [_bull_signal, _bear_signal]
+
+// --- 4. EXECUTION FOR PSP ---
+[any_bull, any_bear] = f_calc_psp_adaptive(use_psp_adv and psp_is_visible)
+
+// --- 5. VISUALS FOR PSP ---
+if use_psp_adv and show_icons and psp_is_visible
+    if any_bull
+        array.push(psp_labels, label.new(bar_index, low, text=psp_bull_shape, yloc=yloc.belowbar, color=#00000000, textcolor=psp_bull_clr, size=psp_size, style=label.style_none))
+    if any_bear
+        array.push(psp_labels, label.new(bar_index, high, text=psp_bear_shape, yloc=yloc.abovebar, color=#00000000, textcolor=psp_bear_clr, size=psp_size, style=label.style_none))
+    if array.size(psp_labels) > max_psp_bars
+        label.delete(array.shift(psp_labels))
+
+barcolor(use_psp_adv and show_body and psp_is_visible ? (any_bull ? psp_bull_body : any_bear ? psp_bear_body : na) : na)
+
+// ============================================
+// SSMT STATUS BAR: ADVANCED CONFLICT LOGIC
+// ============================================
+
+sbar_pos = switch sbar_pos_in
+    "Top Right" => position.top_right
+    "Top Left" => position.top_left
+    "Bottom Right" => position.bottom_right
+    => position.bottom_left
+
+sbar_size = switch sbar_size_in
+    "Tiny" => size.tiny
+    "Small" => size.small
+    "Large" => size.large
+    => size.normal
+
+f_get_sb_color_norm(_arr, _c_bull, _c_bear, _c_sand, _c_neut) =>
+    bool _act_n_bear = array.size(_arr) > 13 ? array.get(_arr, 10) : false
+    bool _act_n_bull = array.size(_arr) > 13 ? array.get(_arr, 11) : false
+    bool _act_h_bear = array.size(_arr) > 13 ? array.get(_arr, 12) : false
+    bool _act_h_bull = array.size(_arr) > 13 ? array.get(_arr, 13) : false
+
+    bool _run_bull = _act_h_bull and (array.size(_arr) > 9 ? array.get(_arr, 5) : false)
+    bool _run_bear = _act_h_bear and (array.size(_arr) > 9 ? array.get(_arr, 4) : false)
+    bool _div_bull = _act_n_bull and (array.size(_arr) > 9 ? (array.get(_arr, 3) or array.get(_arr, 2) or array.get(_arr, 7)) : false)
+    bool _div_bear = _act_n_bear and (array.size(_arr) > 9 ? (array.get(_arr, 1) or array.get(_arr, 0) or array.get(_arr, 6)) : false)
+
+    color _c_out = _c_neut 
+
+    bool _conflict_runs = _run_bull and _run_bear
+    bool _conflict_bear_run_bull_div = _run_bear and _div_bull
+    bool _conflict_bull_run_bear_div = _run_bull and _div_bear
+    bool _conflict_divs = _div_bull and _div_bear
+
+    if _conflict_runs or _conflict_bear_run_bull_div or _conflict_bull_run_bear_div or _conflict_divs
+        _c_out := _c_sand  
+    else if _run_bull      
+        _c_out := _c_bull
+    else if _run_bear      
+        _c_out := _c_bear
+    else if _div_bull      
+        _c_out := _c_bull
+    else if _div_bear      
+        _c_out := _c_bear
+    _c_out
+
+var table sbar_tbl = na
+
+if show_sbar_st and barstate.islast
+    if na(sbar_tbl)
+        sbar_tbl := table.new(sbar_pos, 14, 1, border_width=0)
+    else
+        table.clear(sbar_tbl, 0, 0, 13, 0) 
+
+    color c_y_st   = f_get_sb_color_norm(Y_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+    color c_q_st   = f_get_sb_color_norm(Q_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+    color c_m_st   = f_get_sb_color_norm(M_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+    color c_w_st   = f_get_sb_color_norm(W_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+    color c_d_st   = f_get_sb_color_norm(D_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+    color c_n_st   = f_get_sb_color_norm(N_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+    color c_mic_st = f_get_sb_color_norm(m_SSMT, c_sb_bull, c_sb_bear, c_sb_sand, c_sb_neut)
+
+    string f = font.family_default
+    string[] c_text = array.new_string()
+    color[] c_color = array.new_color()
+
+    if sb_show_y
+        array.push(c_text, "Y")
+        array.push(c_color, c_y_st)
+    if sb_show_q
+        if array.size(c_text) > 0
+            array.push(c_text, "|")
+            array.push(c_color, c_sb_neut)
+        array.push(c_text, "Q")
+        array.push(c_color, c_q_st)
+    if sb_show_m
+        if array.size(c_text) > 0
+            array.push(c_text, "|")
+            array.push(c_color, c_sb_neut)
+        array.push(c_text, "M")
+        array.push(c_color, c_m_st)
+    if sb_show_w
+        if array.size(c_text) > 0
+            array.push(c_text, "|")
+            array.push(c_color, c_sb_neut)
+        array.push(c_text, "W")
+        array.push(c_color, c_w_st)
+    if sb_show_d
+        if array.size(c_text) > 0
+            array.push(c_text, "|")
+            array.push(c_color, c_sb_neut)
+        array.push(c_text, "D")
+        array.push(c_color, c_d_st)
+    if sb_show_90m
+        if array.size(c_text) > 0
+            array.push(c_text, "|")
+            array.push(c_color, c_sb_neut)
+        array.push(c_text, "90m")
+        array.push(c_color, c_n_st)
+    if sb_show_mic
+        if array.size(c_text) > 0
+            array.push(c_text, "|")
+            array.push(c_color, c_sb_neut)
+        array.push(c_text, "Mic")
+        array.push(c_color, c_mic_st)
+
+    int total_elements = array.size(c_text)
+    bool is_right = str.contains(sbar_pos_in, "Right")
+    string align_txt = is_right ? text.align_right : text.align_left
+
+    if total_elements > 0
+        if is_right
+            int start_col = 14 - total_elements
+            for i = 0 to total_elements - 1
+                table.cell(sbar_tbl, start_col + i, 0, array.get(c_text, i), text_color=array.get(c_color, i), text_size=sbar_size, text_font_family=f, text_halign=align_txt)
+        else
+            for i = 0 to total_elements - 1
+                table.cell(sbar_tbl, i, 0, array.get(c_text, i), text_color=array.get(c_color, i), text_size=sbar_size, text_font_family=f, text_halign=align_txt)
+
+// =========================================================================
+// QCISD GLOBAL PROCESSOR & MITIGATION LOOP
+// =========================================================================
+if show_qcisd
+    bool qcisd_alert_active = qcisd_trigger != "Off"
+    bool trig_confirm = (qcisd_trigger == "All" or qcisd_trigger == "Confirmation") and qcisd_alert_active
+    bool trig_inval   = (qcisd_trigger == "All" or qcisd_trigger == "Invalidation") and qcisd_alert_active
+    bool trig_retest  = (qcisd_trigger == "All" or qcisd_trigger == "Retest") and qcisd_alert_active
+    
+    bool qcisd_norm_active = qcisd_norm_trigger != "Off"
+    bool trig_confirm_norm = (qcisd_norm_trigger == "All" or qcisd_norm_trigger == "Confirmation") and qcisd_norm_active
+    bool trig_inval_norm   = (qcisd_norm_trigger == "All" or qcisd_norm_trigger == "Invalidation") and qcisd_norm_active
+    bool trig_retest_norm  = (qcisd_norm_trigger == "All" or qcisd_norm_trigger == "Retest") and qcisd_norm_active
+
+    while array.size(g_q_lines) > qcisd_max_limit
+        line.delete(array.pop(g_q_lines))
+        label.delete(array.pop(g_q_lbls))
+        array.pop(g_q_dirs)
+        array.pop(g_q_hp)
+        array.pop(g_q_conf)
+        array.pop(g_q_names)
+        array.pop(g_q_pairs)
+
+    if array.size(g_q_lines) > 0
+        for i = array.size(g_q_lines) - 1 to 0
+            line l_curr = array.get(g_q_lines, i)
+            label lb_curr = array.get(g_q_lbls, i)
+            int dir = array.get(g_q_dirs, i)
+            bool is_hp_line = array.get(g_q_hp, i)
+            bool is_conf_line = array.get(g_q_conf, i)
+            string p_name = array.get(g_q_pairs, i)
+            string c_name = array.get(g_q_names, i)
+            float lvl = line.get_y1(l_curr)
+            
+            bool delete_it = false
+            
+            if dir == 1 // Bullish
+                if close > lvl
+                    line.set_style(l_curr, line.style_solid)
+                    if not is_conf_line
+                        array.set(g_q_conf, i, true)
+                        if is_hp_line and trig_confirm
+                            alert("Bullish HP-QCISD Confirm on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                        else if not is_hp_line and trig_confirm_norm
+                            alert("Bullish QCISD Confirm on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+
+                bool body_below_0 = (close < lvl and open < lvl)
+                bool body_below_1 = (close[1] < lvl and open[1] < lvl)
+                bool body_below_2 = (close[2] < lvl and open[2] < lvl)
+                
+                if body_below_0
+                    line.set_color(l_curr, qcisd_pend_clr)
+                else
+                    line.set_color(l_curr, qcisd_bull_clr) 
+                
+                if body_below_0 and body_below_1 and body_below_2
+                    delete_it := true
+                    if is_hp_line and trig_inval
+                        alert("Bullish HP-QCISD Invalidated on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                    else if not is_hp_line and trig_inval_norm
+                        alert("Bullish QCISD Invalidated on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                
+                if not delete_it and low <= lvl and close > lvl
+                    if is_hp_line and trig_retest
+                        alert("Bullish HP-QCISD Retest on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                    else if not is_hp_line and trig_retest_norm
+                        alert("Bullish QCISD Retest on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+
+            else if dir == -1 // Bearish
+                if close < lvl
+                    line.set_style(l_curr, line.style_solid)
+                    if not is_conf_line
+                        array.set(g_q_conf, i, true)
+                        if is_hp_line and trig_confirm
+                            alert("Bearish HP-QCISD Confirm on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                        else if not is_hp_line and trig_confirm_norm
+                            alert("Bearish QCISD Confirm on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+
+                bool body_above_0 = (close > lvl and open > lvl)
+                bool body_above_1 = (close[1] > lvl and open[1] > lvl)
+                bool body_above_2 = (close[2] > lvl and open[2] > lvl)
+                
+                if body_above_0
+                    line.set_color(l_curr, qcisd_pend_clr)
+                else
+                    line.set_color(l_curr, qcisd_bear_clr) 
+                
+                if body_above_0 and body_above_1 and body_above_2
+                    delete_it := true
+                    if is_hp_line and trig_inval
+                        alert("Bearish HP-QCISD Invalidated on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                    else if not is_hp_line and trig_inval_norm
+                        alert("Bearish QCISD Invalidated on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                
+                if not delete_it and high >= lvl and close < lvl
+                    if is_hp_line and trig_retest
+                        alert("Bearish HP-QCISD Retest on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+                    else if not is_hp_line and trig_retest_norm
+                        alert("Bearish QCISD Retest on " + p_name + " " + c_name, freq = alert.freq_once_per_bar_close)
+            
+            if delete_it
+                line.delete(array.remove(g_q_lines, i))
+                label.delete(array.remove(g_q_lbls, i))
+                array.remove(g_q_dirs, i)
+                array.remove(g_q_hp, i)
+                array.remove(g_q_conf, i)
+                array.remove(g_q_names, i)
+                array.remove(g_q_pairs, i)
+
+
+         // -----------------------------------------------------------------------------
+//   QT CYCLES & OPENING PRICES 
+// -----------------------------------------------------------------------------
+
+// ==========================================
+//  VISUALS
+// ==========================================
+
+// --- 1. GLOBAL VISUALS ---
+qt_grp_vis     = "QT CYCLES SETTINGS  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+// Row 1: Component Toggles
+qt_show_sess   = input.bool(true, "Show: Sess", group=qt_grp_vis, inline="r1")
+qt_show_90     = input.bool(true, "90m", group=qt_grp_vis, inline="r1")
+qt_show_22     = input.bool(true, "Micro", group=qt_grp_vis, inline="r1")
+
+// Row 2: Decoration Toggles (Fills)
+qt_show_lbl_main = input.bool(false, "Extras: Labels", group=qt_grp_vis, inline="r2")
+qt_show_fill   = input.bool(true, "Fills", group=qt_grp_vis, inline="r2")
+qt_fill_transp = input.int(95, "Fill Opac%", minval=0, maxval=100, group=qt_grp_vis, inline="r2")
+
+// Row 3: Outline Toggles (Lines)
+qt_show_out_sess = input.bool(true, "Outlines: Sess", group=qt_grp_vis, inline="r3")
+qt_show_out_90   = input.bool(true, "90m", group=qt_grp_vis, inline="r3")
+qt_show_out_22   = input.bool(true, "Micro", group=qt_grp_vis, inline="r3")
+qt_bord_transp   = input.int(80, "Line Opac%", minval=0, maxval=100, group=qt_grp_vis, inline="r3", tooltip="0% = Solid, 100% = Invisible")
+
+// Row 4: Styling
+qt_line_style  = input.string("Dotted", "", options=["Solid", "Dotted", "Dashed"], group=qt_grp_vis, inline="r4", tooltip="Global Line Style")
+qt_gap_min     = input.int(1, "Gap", minval=0, maxval=15, group=qt_grp_vis, inline="r4")
+qt_c_lbl_text  = input.color(color.rgb(135, 134, 134), "Txt", group=qt_grp_vis, inline="r4")
+qt_use_mono_in = input.bool(false, "Mono", group=qt_grp_vis, inline="r4")
+
+// Row 5: Data Limits
+qt_box_hist_days = input.int(7, "History (Days)", minval=1, maxval=30, group=qt_grp_vis, inline="r5")
+qt_tf_box_max  = input.timeframe("15", "Max TF", group=qt_grp_vis, inline="r5")
+
+
+// --- 2. SESSION COLORS (STACKED) ---
+// ASIA
+qt_grp_asia    = "Asia"
+qt_c_asia_m    = input.color(color.rgb(206, 215, 223, 61), "Fill: Sess", group=qt_grp_asia, inline="a_fill")
+qt_c_asia_90   = input.color(color.new(#c2ccd4, 30), "90m", group=qt_grp_asia, inline="a_fill")
+qt_c_asia_22   = input.color(color.new(#a4aaae, 60), "Micro", group=qt_grp_asia, inline="a_fill")
+
+qt_b_asia_m    = input.color(color.rgb(178, 185, 191, 75), "Line: Sess", group=qt_grp_asia, inline="a_line")
+qt_b_asia_90   = input.color(color.new(#afb7be, 30), "90m", group=qt_grp_asia, inline="a_line")
+qt_b_asia_22   = input.color(color.new(#989ea4, 60), "Micro", group=qt_grp_asia, inline="a_line")
+
+// LONDON
+qt_grp_lon     = "London"
+qt_c_lon_m     = input.color(color.rgb(198, 191, 191, 63), "Fill: Sess", group=qt_grp_lon, inline="l_fill")
+qt_c_lon_90    = input.color(color.new(#ff5252, 57), "90m", group=qt_grp_lon, inline="l_fill")
+qt_c_lon_22    = input.color(color.new(#a09696, 60), "Micro", group=qt_grp_lon, inline="l_fill")
+
+qt_b_lon_m     = input.color(color.rgb(194, 186, 186, 60), "Line: Sess", group=qt_grp_lon, inline="l_line")
+qt_b_lon_90    = input.color(color.new(#ff5252, 49), "90m", group=qt_grp_lon, inline="l_line")
+qt_b_lon_22    = input.color(color.new(#878484, 60), "Micro", group=qt_grp_lon, inline="l_line")
+
+// NY AM
+qt_grp_nyam    = "NY AM"
+qt_c_nyam_m    = input.color(color.rgb(146, 154, 146, 66), "Fill: Sess", group=qt_grp_nyam, inline="n_fill")
+qt_c_nyam_90   = input.color(color.new(#9e4caf, 62), "90m", group=qt_grp_nyam, inline="n_fill")
+qt_c_nyam_22   = input.color(color.new(#989c98, 60), "Micro", group=qt_grp_nyam, inline="n_fill")
+
+qt_b_nyam_m    = input.color(color.rgb(157, 167, 157, 66), "Line: Sess", group=qt_grp_nyam, inline="n_line")
+qt_b_nyam_90   = input.color(color.new(#db85ee, 52), "90m", group=qt_grp_nyam, inline="n_line")
+qt_b_nyam_22   = input.color(color.new(#9fa59f, 60), "Micro", group=qt_grp_nyam, inline="n_line")
+
+// NY PM
+qt_grp_nypm    = "NY PM"
+qt_c_nypm_m    = input.color(color.rgb(184, 181, 177, 60), "Fill: Sess", group=qt_grp_nypm, inline="p_fill")
+qt_c_nypm_90   = input.color(color.new(#33b0ef, 55), "90m", group=qt_grp_nypm, inline="p_fill")
+qt_c_nypm_22   = input.color(color.new(#a3a19d, 60), "Micro", group=qt_grp_nypm, inline="p_fill")
+
+qt_b_nypm_m    = input.color(color.rgb(184, 180, 176, 65), "Line: Sess", group=qt_grp_nypm, inline="p_line")
+qt_b_nypm_90   = input.color(color.new(#5799d2, 61), "90m", group=qt_grp_nypm, inline="p_line")
+qt_b_nypm_22   = input.color(color.new(#8d8b88, 60), "Micro", group=qt_grp_nypm, inline="p_line")
+
+// --- 3. DAILY DIVIDER ---
+qt_grp_div     = "Daily Divider ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+qt_show_div    = input.bool(true, "Show Divider", group=qt_grp_div, inline="d1")
+qt_div_time    = input.string("Day Open (18:00)", "", options=["Midnight (00:00)", "Day Open (18:00)"], group=qt_grp_div, inline="d1")
+qt_c_div       = input.color(color.rgb(143, 144, 150, 28), "Color", group=qt_grp_div, inline="d2")
+qt_s_div       = input.string("Dotted", "Style", options=["Solid", "Dotted", "Dashed"], group=qt_grp_div, inline="d2")
+// HARDCODED WIDTH
+int qt_w_div   = 1 
+qt_lim_div     = input.int(3, "Max Count", minval=1, maxval=499, group=qt_grp_div)
+
+// --- 4. HTF DIVIDERS  ---
+qt_grp_htf     = "HTF Dividers ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+// Row 1: Global Settings
+qt_htf_cnt     = input.int(2, "Global Count", minval=1, maxval=50, group=qt_grp_htf, inline="h1")
+qt_htf_style   = input.string("Dotted", "Style", options=["Solid", "Dashed", "Dotted"], group=qt_grp_htf, inline="h1")
+int qt_htf_w   = 1 
+
+// Row 2: Year
+qt_show_y      = input.bool(false, "Year", inline="y", group=qt_grp_htf)
+qt_c_y         = input.color(color.new(color.red, 50), "", inline="y", group=qt_grp_htf)
+
+// Row 3: Month
+qt_show_m      = input.bool(false, "Month", inline="m", group=qt_grp_htf)
+qt_c_m         = input.color(color.new(#093fef, 50), "", inline="m", group=qt_grp_htf)
+
+// Row 4: Week
+qt_show_w      = input.bool(true, "Week", inline="w", group=qt_grp_htf)
+qt_c_w         = input.color(color.new(color.blue, 50), "", inline="w", group=qt_grp_htf)
+
+
+// ==========================================
+// OPENING PRICES SETTINGS
+// ==========================================
+
+qt_grp_global = "Opening Prices Styling🎨 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+qt_grp_slots  = "Opening Prices Slots⏰"
+
+// Global Settings
+qt_i_max_keep  = input.int(1, "Max History", minval=1, maxval=50, group=qt_grp_global, inline="g1", tooltip="How many past lines to keep per slot.")
+qt_i_unlimited = input.bool(false, "∞ Keep All", group=qt_grp_global, inline="g1")
+
+qt_i_l_style   = input.string("Dotted", "Style", options=["Solid", "Dotted", "Dashed"], group=qt_grp_global, inline="g2")
+int qt_i_l_width = 1 // Hardcoded
+qt_i_t_size    = input.string("Small", "Text", options=["Tiny", "Small", "Normal", "Large"], group=qt_grp_global, inline="g2")
+qt_i_offset    = input.int(0, "Offset", group=qt_grp_global, inline="g2")
+
+// Convert Inputs to Constants
+var qt_slot_line_style = qt_i_l_style == "Dotted" ? line.style_dotted : qt_i_l_style == "Dashed" ? line.style_dashed : line.style_solid
+var qt_text_size  = qt_i_t_size == "Tiny" ? size.tiny : qt_i_t_size == "Small" ? size.small : qt_i_t_size == "Large" ? size.large : size.normal
+
+// Slot 1
+qt_s1_on    = input.bool(false, "", inline="s1", group=qt_grp_slots)
+qt_s1_name  = input.string("8:30", "", inline="s1", group=qt_grp_slots, tooltip="Label Name")
+qt_s1_start = input.string("08:30", "to", inline="s1", group=qt_grp_slots, tooltip="Start Time (EST)")
+qt_s1_end   = input.string("10:00", "", inline="s1", group=qt_grp_slots, tooltip="End Time (EST)")
+qt_s1_col   = input.color(color.new(color.gray, 0), "", inline="s1", group=qt_grp_slots)
+
+// Slot 2
+qt_s2_on    = input.bool(true, "", inline="s2", group=qt_grp_slots)
+qt_s2_name  = input.string("9:30", "", inline="s2", group=qt_grp_slots)
+qt_s2_start = input.string("09:30", "to", inline="s2", group=qt_grp_slots)
+qt_s2_end   = input.string("11:59", "", inline="s2", group=qt_grp_slots)
+qt_s2_col   = input.color(color.new(color.gray, 0), "", inline="s2", group=qt_grp_slots)
+
+// Slot 3
+qt_s3_on    = input.bool(false, "", inline="s3", group=qt_grp_slots)
+qt_s3_name  = input.string("Slot3", "", inline="s3", group=qt_grp_slots)
+qt_s3_start = input.string("07:30", "to", inline="s3", group=qt_grp_slots)
+qt_s3_end   = input.string("11:59", "", inline="s3", group=qt_grp_slots)
+qt_s3_col   = input.color(color.new(color.gray, 0), "", inline="s3", group=qt_grp_slots)
+
+// Slot 4
+qt_s4_on    = input.bool(false, "", inline="s4", group=qt_grp_slots)
+qt_s4_name  = input.string("Slot4", "", inline="s4", group=qt_grp_slots)
+qt_s4_start = input.string("10:00", "to", inline="s4", group=qt_grp_slots)
+qt_s4_end   = input.string("11:00", "", inline="s4", group=qt_grp_slots)
+qt_s4_col   = input.color(color.new(color.gray, 0), "", inline="s4", group=qt_grp_slots)
+
+
+// =============================================================================
+// SHARED LOGIC
+// =============================================================================
+
+// Unified Font Logic
+qt_font_fam    = qt_use_mono_in ? font.family_monospace : font.family_default
+string qt_calc_tz = "America/New_York"
+
+// ==========================================
+// ── LOGIC ──
+// ==========================================
+qt_is_in_timespan(h, start_h, end_h) => h >= start_h and h < end_h
+qt_get_line_style(style_str) => style_str == "Solid" ? line.style_solid : style_str == "Dotted" ? line.style_dotted : line.style_dashed
+
+int MS_90   = 90 * 60 * 1000
+int MS_22   = int(22.5 * 60 * 1000)
+int MS_SESS = 6 * 60 * 60 * 1000
+int qt_GAP     = qt_gap_min * 60 * 1000 
+
+int qt_raw_h = hour(time, qt_calc_tz)
+int qt_h     = qt_raw_h % 24 
+if qt_h < 0 
+    qt_h := 24 + qt_h 
+
+int qt_min    = minute(time, qt_calc_tz)
+int qt_y=year(time, qt_calc_tz), qt_m=month(time, qt_calc_tz), qt_d=dayofmonth(time, qt_calc_tz)
+int qt_dow    = dayofweek(time, qt_calc_tz) 
+
+// Timeframe Seconds
+int qt_tf_sec = timeframe.in_seconds(timeframe.period)
+int sec_3m = timeframe.in_seconds("3M")
+int sec_1w = timeframe.in_seconds("1W")
+int sec_1d = timeframe.in_seconds("1D")
+int sec_1h = 3600
+
+// --- HTF DIVIDER DRAWING ---
+// Define Arrays
+var line[] qt_a_div_y = array.new_line()
+var line[] qt_a_div_m = array.new_line()
+var line[] qt_a_div_w = array.new_line()
+
+// Global Style Resolve
+string qt_resolved_htf_style = qt_get_line_style(qt_htf_style)
+
+// 1. YEAR START (Accurate change of Year)
+if qt_show_y and qt_tf_sec <= sec_3m and ta.change(year(time, qt_calc_tz)) != 0
+    line l = line.new(x1=time, y1=low, x2=time, y2=high, xloc=xloc.bar_time, extend=extend.both, color=qt_c_y, style=qt_resolved_htf_style, width=qt_htf_w)
+    array.push(qt_a_div_y, l)
+    if array.size(qt_a_div_y) > qt_htf_cnt
+        line.delete(array.shift(qt_a_div_y))
+
+// 2. MONTH START (Accurate change of Month)
+if qt_show_m and qt_tf_sec <= sec_1w and ta.change(month(time, qt_calc_tz)) != 0
+    line l = line.new(x1=time, y1=low, x2=time, y2=high, xloc=xloc.bar_time, extend=extend.both, color=qt_c_m, style=qt_resolved_htf_style, width=qt_htf_w)
+    array.push(qt_a_div_m, l)
+    if array.size(qt_a_div_m) > qt_htf_cnt
+        line.delete(array.shift(qt_a_div_m))
+
+// 3. WEEK START (SUNDAY 18:00 NY)
+// Logic: Check if it is Sunday (1) and Hour is >= 18. Use latch to trigger once.
+var bool qt_week_printed = false
+bool qt_is_sun_open = dayofweek(time, qt_calc_tz) == dayofweek.sunday and hour(time, qt_calc_tz) >= 18
+
+// Reset latch on Friday to be safe for next week
+if dayofweek(time, qt_calc_tz) == dayofweek.friday
+    qt_week_printed := false
+
+if qt_show_w and qt_tf_sec <= sec_1h and qt_is_sun_open and not qt_week_printed
+    line l = line.new(x1=time, y1=low, x2=time, y2=high, xloc=xloc.bar_time, extend=extend.both, color=qt_c_w, style=qt_resolved_htf_style, width=qt_htf_w)
+    array.push(qt_a_div_w, l)
+    qt_week_printed := true
+    if array.size(qt_a_div_w) > qt_htf_cnt
+        line.delete(array.shift(qt_a_div_w))
+
+// --- BOX & DIVIDER LOGIC ---
+var line[] qt_a_div = array.new_line()
+var box[] qt_arr_b_main = array.new_box()
+var label[] qt_arr_l_main = array.new_label()
+var box[] qt_arr_b_90 = array.new_box()
+var box[] qt_arr_b_22 = array.new_box()
+
+int qt_lim_b_sess = qt_box_hist_days * 4
+int qt_lim_b_90   = math.min(qt_box_hist_days, 10) * 16 
+int qt_lim_b_22   = math.min(qt_box_hist_days, 3) * 64
+
+var box qt_box_main = na, var label qt_lbl_main = na
+var box qt_box_90 = na, var box qt_box_22 = na
+var int qt_session_start_time = na
+var string qt_current_session_name = na
+var color qt_cur_fill_main = na, var color qt_cur_brd_main  = na
+var color qt_cur_fill_90   = na, var color qt_cur_brd_90    = na
+var color qt_cur_fill_22   = na, var color qt_cur_brd_22    = na
+var int qt_prev_idx_90 = -1, var int qt_prev_idx_22 = -1
+
+string qt_new_sess_name = na
+int qt_new_sess_start_h = na
+color qt_n_f_main = na, color qt_n_b_main = na
+color qt_n_f_90 = na,   color qt_n_b_90 = na
+color qt_n_f_22 = na,   color qt_n_b_22 = na
+
+if qt_is_in_timespan(qt_h, 18, 24)
+    qt_new_sess_name := "Asia"
+    qt_new_sess_start_h := 18
+    qt_n_f_main := qt_c_asia_m, qt_n_b_main := qt_b_asia_m
+    qt_n_f_90   := qt_c_asia_90, qt_n_b_90   := qt_b_asia_90
+    qt_n_f_22   := qt_c_asia_22, qt_n_b_22   := qt_b_asia_22
+else if qt_is_in_timespan(qt_h, 0, 6)
+    qt_new_sess_name := "London"
+    qt_new_sess_start_h := 0
+    qt_n_f_main := qt_c_lon_m, qt_n_b_main := qt_b_lon_m
+    qt_n_f_90   := qt_c_lon_90, qt_n_b_90   := qt_b_lon_90
+    qt_n_f_22   := qt_c_lon_22, qt_n_b_22   := qt_b_lon_22
+else if qt_is_in_timespan(qt_h, 6, 12)
+    qt_new_sess_name := "NY AM"
+    qt_new_sess_start_h := 6
+    qt_n_f_main := qt_c_nyam_m, qt_n_b_main := qt_b_nyam_m
+    qt_n_f_90   := qt_c_nyam_90, qt_n_b_90   := qt_b_nyam_90
+    qt_n_f_22   := qt_c_nyam_22, qt_n_b_22   := qt_b_nyam_22
+else if qt_is_in_timespan(qt_h, 12, 18) 
+    qt_new_sess_name := "NY PM"
+    qt_new_sess_start_h := 12
+    qt_n_f_main := qt_c_nypm_m, qt_n_b_main := qt_b_nypm_m
+    qt_n_f_90   := qt_c_nypm_90, qt_n_b_90   := qt_b_nypm_90
+    qt_n_f_22   := qt_c_nypm_22, qt_n_b_22   := qt_b_nypm_22
+
+bool qt_session_changed = qt_new_sess_name != qt_current_session_name
+
+if qt_session_changed
+    qt_current_session_name := qt_new_sess_name
+    qt_cur_fill_main := qt_n_f_main, qt_cur_brd_main := qt_n_b_main
+    qt_cur_fill_90   := qt_n_f_90,   qt_cur_brd_90   := qt_n_b_90
+    qt_cur_fill_22   := qt_n_f_22,   qt_cur_brd_22   := qt_n_b_22
+    qt_session_start_time := timestamp(qt_calc_tz, qt_y, qt_m, qt_d, qt_new_sess_start_h, 0, 0)
+    qt_prev_idx_90 := -1
+    qt_prev_idx_22 := -1
+
+int qt_time_elapsed = time - qt_session_start_time
+qt_current_line_style = qt_get_line_style(qt_line_style)
+qt_get_fill(c)    => qt_show_fill ? color.new(c, qt_fill_transp) : na
+qt_get_sess_brd(c) => qt_show_out_sess ? color.new(c, qt_bord_transp) : na
+qt_get_90_brd(c)   => qt_show_out_90 ? color.new(c, qt_bord_transp) : na
+qt_get_22_brd(c)   => qt_show_out_22 ? color.new(c, qt_bord_transp) : na
+
+if not na(qt_current_session_name) and qt_time_elapsed >= 0
+    // --- DAILY DIVIDER (User Selected Time) ---
+    // Only show if current TF <= 1 Hour (3600s)
+    bool qt_show_boxes_tf_ok = qt_tf_sec <= timeframe.in_seconds(qt_tf_box_max)
+    int qt_target_div_h = qt_div_time == "Midnight (00:00)" ? 0 : 18
+    if qt_show_div and qt_tf_sec <= sec_1h and qt_h == qt_target_div_h and qt_h[1] != qt_target_div_h
+        line l_new = line.new(x1=time, y1=low, x2=time, y2=high, xloc=xloc.bar_time, extend=extend.both, color=qt_c_div, style=qt_get_line_style(qt_s_div), width=qt_w_div)
+        array.push(qt_a_div, l_new)
+        if array.size(qt_a_div) > qt_lim_div
+            line.delete(array.shift(qt_a_div))
+            
+    if qt_show_boxes_tf_ok
+        // MAIN SESSION BOX
+        if qt_show_sess
+            int qt_hard_end_sess = qt_session_start_time + MS_SESS - qt_GAP
+            if qt_session_changed
+                qt_box_main := box.new(left=qt_session_start_time, top=high, right=time, bottom=low, xloc=xloc.bar_time, border_color=qt_get_sess_brd(qt_cur_brd_main), border_style=qt_current_line_style, border_width=1, bgcolor=qt_get_fill(qt_cur_fill_main))
+                array.push(qt_arr_b_main, qt_box_main)
+                if array.size(qt_arr_b_main) > qt_lim_b_sess
+                    box.delete(array.shift(qt_arr_b_main))
+                
+                if qt_show_lbl_main
+                    qt_lbl_main := label.new(x=int(qt_session_start_time + MS_SESS/2), y=high, text=qt_current_session_name, xloc=xloc.bar_time, yloc=yloc.price, style=label.style_label_down, color=color.new(color.white, 100), textcolor=qt_c_lbl_text, size=size.tiny, text_font_family=qt_font_fam)
+                    array.push(qt_arr_l_main, qt_lbl_main)
+                    if array.size(qt_arr_l_main) > qt_lim_b_sess
+                        label.delete(array.shift(qt_arr_l_main))
+            
+            // Update Main Box
+            if not na(qt_box_main)
+                box.set_right(qt_box_main, math.min(time, qt_hard_end_sess))
+                box.set_bgcolor(qt_box_main, qt_get_fill(qt_cur_fill_main))
+                box.set_border_color(qt_box_main, qt_get_sess_brd(qt_cur_brd_main))
+                box.set_border_style(qt_box_main, qt_current_line_style)
+                if high > box.get_top(qt_box_main) 
+                    box.set_top(qt_box_main, high)
+                if low < box.get_bottom(qt_box_main) 
+                    box.set_bottom(qt_box_main, low)
+                if qt_show_lbl_main and not na(qt_lbl_main)
+                    label.set_y(qt_lbl_main, box.get_top(qt_box_main))
+                    
+        // 90 MINUTE CYCLES
+        if qt_show_90
+            int qt_idx_90 = math.floor(qt_time_elapsed / MS_90)
+            if qt_idx_90 != qt_prev_idx_90 and qt_idx_90 < 4
+                qt_prev_idx_90 := qt_idx_90
+                int qt_start_90 = qt_session_start_time + (qt_idx_90 * MS_90)
+                qt_box_90 := box.new(left=qt_start_90, top=high, right=time, bottom=low, xloc=xloc.bar_time, border_color=qt_get_90_brd(qt_cur_brd_90), border_style=qt_current_line_style, border_width=1, bgcolor=qt_get_fill(qt_cur_fill_90))
+                array.push(qt_arr_b_90, qt_box_90)
+                if array.size(qt_arr_b_90) > qt_lim_b_90
+                    box.delete(array.shift(qt_arr_b_90))
+            
+            if not na(qt_box_90) and qt_idx_90 < 4
+                int qt_hard_end_90 = qt_session_start_time + ((qt_idx_90 + 1) * MS_90) - qt_GAP
+                box.set_right(qt_box_90, math.min(time, qt_hard_end_90))
+                box.set_bgcolor(qt_box_90, qt_get_fill(qt_cur_fill_90))
+                box.set_border_color(qt_box_90, qt_get_90_brd(qt_cur_brd_90))
+                box.set_border_style(qt_box_90, qt_current_line_style)
+                if high > box.get_top(qt_box_90) 
+                    box.set_top(qt_box_90, high)
+                if low < box.get_bottom(qt_box_90) 
+                    box.set_bottom(qt_box_90, low)
+
+        // MICRO CYCLES (22.5m)
+        if qt_show_22
+            int qt_idx_22 = math.floor(qt_time_elapsed / MS_22)
+            if qt_idx_22 != qt_prev_idx_22 and qt_idx_22 < 16
+                qt_prev_idx_22 := qt_idx_22
+                int qt_start_22 = qt_session_start_time + (qt_idx_22 * MS_22)
+                qt_box_22 := box.new(left=qt_start_22, top=high, right=time, bottom=low, xloc=xloc.bar_time, border_color=qt_get_22_brd(qt_cur_brd_22), border_style=qt_current_line_style, border_width=1, bgcolor=qt_get_fill(qt_cur_fill_22))
+                array.push(qt_arr_b_22, qt_box_22)
+                if array.size(qt_arr_b_22) > qt_lim_b_22
+                    box.delete(array.shift(qt_arr_b_22))
+            
+            if not na(qt_box_22) and qt_idx_22 < 16
+                int qt_hard_end_22 = qt_session_start_time + ((qt_idx_22 + 1) * MS_22) - qt_GAP
+                box.set_right(qt_box_22, math.min(time, qt_hard_end_22))
+                box.set_bgcolor(qt_box_22, qt_get_fill(qt_cur_fill_22))
+                box.set_border_color(qt_box_22, qt_get_22_brd(qt_cur_brd_22))
+                box.set_border_style(qt_box_22, qt_current_line_style)
+                if high > box.get_top(qt_box_22) 
+                    box.set_top(qt_box_22, high)
+                if low < box.get_bottom(qt_box_22) 
+                    box.set_bottom(qt_box_22, low)
+
+// ==========================================
+//  LOGIC: OPENING PRICES 
+// ==========================================
+
+var qt_a_lines_1 = array.new<line>(), var qt_a_lbls_1 = array.new<label>()
+var qt_a_lines_2 = array.new<line>(), var qt_a_lbls_2 = array.new<label>()
+var qt_a_lines_3 = array.new<line>(), var qt_a_lbls_3 = array.new<label>()
+var qt_a_lines_4 = array.new<line>(), var qt_a_lbls_4 = array.new<label>()
+
+// Helper to clean time strings (e.g. turn "9:30" into "0930")
+qt_clean_time(t) =>
+    s = str.replace_all(t, ":", "")
+    str.length(s) == 3 ? "0" + s : s
+
+// Helper: Check if current TF is valid for the start time
+qt_is_timeframe_valid(start_time_str) =>
+    int current_seconds = timeframe.in_seconds(timeframe.period)
+    bool valid_tf = current_seconds <= 3600 // Must be <= 1H
+    
+    // Strict Granularity: If 1H chart, minute MUST be 00.
+    string mins = str.substring(qt_clean_time(start_time_str), 2, 4)
+    if current_seconds == 3600 and mins != "00"
+        valid_tf := false
+    valid_tf
+
+qt_process_slot(bool enable, string name, string t_start, string t_end, color col, array<line> line_arr, array<label> lbl_arr) =>
+    if enable and qt_is_timeframe_valid(t_start)
+        string sess_str = qt_clean_time(t_start) + "-" + qt_clean_time(t_end)
+        
+        // Time check with Eastern Time logic
+        bool in_session = not na(time(timeframe.period, sess_str + ":1234567", "America/New_York"))
+        bool is_start   = in_session and not in_session[1]
+        
+        // 1. Create New Line
+        if is_start
+            line new_line = line.new(bar_index, open, bar_index, open, color=col, width=qt_i_l_width, style=qt_slot_line_style)
+            array.push(line_arr, new_line)
+            label new_lbl = label.new(bar_index, open, text=name, color=color.new(color.white, 100), style=label.style_label_left, textcolor=col, size=qt_text_size, text_font_family=qt_font_fam)
+            array.push(lbl_arr, new_lbl)
+            
+            // Garbage Collection
+            if not qt_i_unlimited and array.size(line_arr) > qt_i_max_keep
+                line.delete(array.shift(line_arr))
+                label.delete(array.shift(lbl_arr))
+        
+        // 2. Extend Line
+        if in_session and array.size(line_arr) > 0
+            line curr_line = array.get(line_arr, array.size(line_arr) - 1)
+            label curr_lbl = array.get(lbl_arr, array.size(lbl_arr) - 1)
+            line.set_x2(curr_line, bar_index)
+            label.set_x(curr_lbl, bar_index + qt_i_offset)
+
+qt_process_slot(qt_s1_on, qt_s1_name, qt_s1_start, qt_s1_end, qt_s1_col, qt_a_lines_1, qt_a_lbls_1)
+qt_process_slot(qt_s2_on, qt_s2_name, qt_s2_start, qt_s2_end, qt_s2_col, qt_a_lines_2, qt_a_lbls_2)
+qt_process_slot(qt_s3_on, qt_s3_name, qt_s3_start, qt_s3_end, qt_s3_col, qt_a_lines_3, qt_a_lbls_3)
+qt_process_slot(qt_s4_on, qt_s4_name, qt_s4_start, qt_s4_end, qt_s4_col, qt_a_lines_4, qt_a_lbls_4)
+
+// =============================================================================
+// =============================================================================
+// TRUE OPEN MODULE INTEGRATION
+// =============================================================================
+// =============================================================================
+
+// =============================================================================
+// 1. SETTINGS & INPUTS (TRUE OPEN)
+// =============================================================================
+
+// --- General Settings ---
+int to_triggerHour   = 18 
+
+// Label Offset
+to_grp_main = "TRUE OPENS SETTINGS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+to_offset_val         = input.int(10, "Label Offset (Bars)", minval=0, maxval=100, group=to_grp_main)
+
+to_textSize           = input.string(size.small, "Text Size", options=[size.tiny, size.small, size.normal, size.large], group=to_grp_main)
+to_use_mono           = input.bool(false, "Use Monospace Text", group=to_grp_main, tooltip="Applies to both chart labels and the status table.")
+
+// Line Style Mode
+to_style_mode         = input.string("Auto", "Line Style Mode", options=["Auto", "Custom"], group=to_grp_main, inline="style", tooltip="Auto: Active=Dotted, History=Solid.")
+to_custom_style       = input.string("Solid", "Style", options=["Solid", "Dashed", "Dotted"], group=to_grp_main, inline="style")
+
+// --- History Filters ---
+to_grp_hist = "True Open History Filters ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+to_hist_count_global = input.int(1, "Global History Count", minval=1, group=to_grp_hist, tooltip="How many past lines to keep for the selected timeframes.")
+
+to_hist_yr    = input.bool(false, "Year", group=to_grp_hist, inline="h1")
+to_hist_qt    = input.bool(false, "Quarter", group=to_grp_hist, inline="h1")
+to_hist_mn    = input.bool(false, "Month", group=to_grp_hist, inline="h1")
+to_hist_wk    = input.bool(false, "Week", group=to_grp_hist, inline="h2")
+to_hist_dy    = input.bool(false, "Day", group=to_grp_hist, inline="h2")
+to_hist_sess = input.bool(false, "Session", group=to_grp_hist, inline="h3")
+to_hist_90m   = input.bool(false, "90m", group=to_grp_hist, inline="h3")
+
+// Dynamic Font Assignment
+to_font_fam = to_use_mono ? font.family_monospace : font.family_default 
+
+// --- Fixed Session Times (Internal - NY Time) ---
+int to_t_asia_h = 19, int to_t_asia_m = 30
+int to_t_lon_h  = 1,  int to_t_lon_m  = 30
+int to_t_nyam_h = 7,  int to_t_nyam_m = 30
+int to_t_nypm_h = 13, int to_t_nypm_m = 30
+
+// --- Visibility Toggles ---
+to_grp_vis = "True Open Visibility ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+to_show_yr_open     = input.bool(true, "Show True Year Opens", group=to_grp_vis)
+to_show_qt_open     = input.bool(true, "Show True Quarter Opens", group=to_grp_vis)
+to_show_mn_open     = input.bool(true, "Show True Month Opens", group=to_grp_vis)
+to_show_wk_open     = input.bool(true, "Show True Week Opens", group=to_grp_vis)
+to_show_dy_open     = input.bool(true, "Show True Day Opens", group=to_grp_vis)
+to_show_sess_open   = input.bool(true, "Show True Session Opens", group=to_grp_vis)
+to_show_90m_open    = input.bool(true, "Show True 90-Min Opens", group=to_grp_vis)
+
+// --- Custom TF Ranges ---
+to_grp_rng = "True Open Custom TF Ranges ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+to_nm_min    = input.timeframe("1", "90-Min Boundaries", group=to_grp_rng, inline="rng_nm")
+to_nm_max    = input.timeframe("3", "To", group=to_grp_rng, inline="rng_nm")
+
+to_sess_min = input.timeframe("1", "Session Boundaries", group=to_grp_rng, inline="rng_sess")
+to_sess_max = input.timeframe("45", "To", group=to_grp_rng, inline="rng_sess")
+
+// 3. Daily & HTF Boundaries
+to_dy_min = input.timeframe("1", "Daily Boundaries", group=to_grp_rng, inline="rng_dy")
+to_dy_max = input.timeframe("60", "To", group=to_grp_rng, inline="rng_dy")
+
+to_wk_min = input.timeframe("15", "Weekly Boundaries", group=to_grp_rng, inline="rng_wk")
+to_wk_max = input.timeframe("60", "To", group=to_grp_rng, inline="rng_wk")
+
+to_mn_min = input.timeframe("60", "Monthly Boundaries", group=to_grp_rng, inline="rng_mn")
+to_mn_max = input.timeframe("240", "To", group=to_grp_rng, inline="rng_mn")
+
+to_qt_min = input.timeframe("240", "Quarterly Boundaries", group=to_grp_rng, inline="rng_qt")
+to_qt_max = input.timeframe("W", "To", group=to_grp_rng, inline="rng_qt")
+
+to_yr_min = input.timeframe("240", "Yearly Boundaries", group=to_grp_rng, inline="rng_yr")
+to_yr_max = input.timeframe("M", "To", group=to_grp_rng, inline="rng_yr")
+
+// --- Styling ---
+to_grp_style = "True Open Styling & Labels ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+to_c_yr = input.color(color.new(#ff5252, 35), "Year TO", group=to_grp_style, inline="sty_yr")
+to_n_yr = input.string("TYO", "", group=to_grp_style, inline="sty_yr")
+
+to_c_qt = input.color(color.new(#ff0066, 36), "Quarter TO", group=to_grp_style, inline="sty_qt")
+to_n_qt = input.string("TQO", "", group=to_grp_style, inline="sty_qt")
+
+to_c_mn = input.color(color.new(#545754, 0), "Month TO", group=to_grp_style, inline="sty_mn")
+to_n_mn = input.string("TMO", "", group=to_grp_style, inline="sty_mn")
+
+to_c_wk = input.color(color.new(#2195f3, 41), "Week TO", group=to_grp_style, inline="sty_wk")
+to_n_wk = input.string("TWO", "", group=to_grp_style, inline="sty_wk")
+
+to_c_dy = input.color(color.new(#403f37, 34), "Daily TO", group=to_grp_style, inline="sty_dy")
+to_n_dy = input.string("TDO", "", group=to_grp_style, inline="sty_dy")
+
+to_c_90m = input.color(color.new(#00bbd4, 34), "90-Min TO", group=to_grp_style, inline="sty_90")
+
+// Unified Session Styling
+to_c_sess       = input.color(color.new(#9b27b0, 36), "Session TO Color", group=to_grp_style)
+to_sess_lbl_mode = input.string("Time", "Session Label Mode", options=["Name", "Time"], group=to_grp_style, tooltip="Name: Shows AO/LO etc.\nTime: Shows 19:30/01:30 etc.")
+
+// --- Price Tracking Table ---
+to_grp_tbl = "True Open Price Tracking Table ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+to_show_table       = input.bool(true, "Show Price Tracking Table", group=to_grp_tbl)
+to_table_pos        = input.string(position.bottom_right, "Table Position", options=[position.top_right, position.middle_right, position.bottom_right, position.top_left, position.middle_left, position.bottom_left], group=to_grp_tbl)
+to_table_txt_size   = input.string(size.small, "Table Text Size", options=[size.tiny, size.small, size.normal, size.large], group=to_grp_tbl)
+
+to_tbl_show_90m     = input.bool(true, "Show 90-Min", group=to_grp_tbl, inline="tbl_rows") 
+to_tbl_show_sess    = input.bool(true, "Show Session", group=to_grp_tbl, inline="tbl_rows") 
+to_tbl_show_dy      = input.bool(true, "Show Daily", group=to_grp_tbl, inline="tbl_rows")
+to_tbl_show_wk      = input.bool(true, "Show Weekly", group=to_grp_tbl, inline="tbl_rows")
+to_tbl_show_mn      = input.bool(false, "Show Monthly", group=to_grp_tbl, inline="tbl_rows")
+to_tbl_show_qt      = input.bool(false, "Show Quarterly", group=to_grp_tbl, inline="tbl_rows2")
+to_tbl_show_yr      = input.bool(false, "Show Yearly", group=to_grp_tbl, inline="tbl_rows2")
+
+to_c_tbl_above      = input.color(color.new(#1090f9, 36), "Above", group=to_grp_tbl, inline="tbl_cols")
+to_c_tbl_below      = input.color(color.new(#c8452b, 33), "Below", group=to_grp_tbl, inline="tbl_cols")
+to_c_tbl_none       = input.color(color.new(color.gray, 0), "Not Open", group=to_grp_tbl, inline="tbl_cols")
+
+// =============================================================================
+// 2. HELPER FUNCTIONS & VISIBILITY
+// =============================================================================
+
+type TO_Level
+    line l
+    label lbl
+    float price 
+    bool active 
+    string name 
+    color c 
+    int start_t 
+    int end_t 
+
+to_tf_to_min(string tf) =>
+    timeframe.in_seconds(tf) / 60.0
+
+to_is_visible(string min_s, string max_s) =>
+    float current_min = timeframe.multiplier
+    if timeframe.isseconds
+        current_min := current_min / 60.0
+    if timeframe.isdaily
+        current_min := 1440.0
+    if timeframe.isweekly
+        current_min := 10080.0
+    if timeframe.ismonthly
+        current_min := 43200.0
+        
+    float min_val = to_tf_to_min(min_s)
+    float max_val = to_tf_to_min(max_s)
+    current_min >= min_val and current_min <= max_val
+
+to_get_style_const(string s) =>
+    s == "Dashed" ? line.style_dashed : s == "Dotted" ? line.style_dotted : line.style_solid
+
+to_get_active_style() =>
+    if to_style_mode == "Auto"
+        line.style_dotted 
+    else
+        to_get_style_const(to_custom_style)
+
+// --- Logic for Hard Session Ends ---
+to_get_sess_end(int start_time) =>
+    string ny_tz = "America/New_York"
+    int h = hour(start_time, ny_tz)
+    int y = year(start_time, ny_tz)
+    int m = month(start_time, ny_tz)
+    int d = dayofmonth(start_time, ny_tz)
+    
+    int end_h = 0
+    
+    if h >= 18
+        end_h := 0
+    else if h >= 12
+        end_h := 18
+    else if h >= 6
+        end_h := 12
+    else
+        end_h := 6
+        
+    int target = 0
+    if h >= 18
+        int today_zero = timestamp(tz, y, m, d, 0, 0)
+        target := today_zero + 86400000 // +24 hours
+    else
+        target := timestamp(tz, y, m, d, end_h, 0)
+    target
+
+// --- Management Functions ---
+
+to_enforce_limit(array<TO_Level> arr, bool allow_hist) =>
+    bool has_active = array.size(arr) > 0 and array.get(arr, array.size(arr)-1).active
+    int hist_limit = allow_hist ? to_hist_count_global : 0
+    int total_limit = hist_limit + (has_active ? 1 : 0)
+    while array.size(arr) > total_limit
+        oldObj = array.shift(arr)
+        line.delete(oldObj.l)
+        label.delete(oldObj.lbl)
+
+to_force_close_period(array<TO_Level> arr, bool allow_hist) =>
+    if array.size(arr) > 0
+        lastObj = array.get(arr, array.size(arr) - 1)
+        if lastObj.active
+            lastObj.active := false
+            line.set_x2(lastObj.l, time)
+            label.set_x(lastObj.lbl, time)
+            if to_style_mode == "Auto"
+                line.set_style(lastObj.l, line.style_solid)
+            label.delete(lastObj.lbl) 
+            to_enforce_limit(arr, allow_hist)
+
+to_manage_history(array<TO_Level> arr, float p, int start_time, string txt, color col, bool allow_hist, bool use_hard_end, int custom_end) =>
+    if array.size(arr) > 0
+        prevObj = array.get(arr, array.size(arr) - 1)
+        if prevObj.active
+            prevObj.active := false
+            
+            // If the previous object had a hard end, we cut the line there.
+            int cut_time = start_time
+            if prevObj.end_t != 0 and prevObj.end_t < start_time
+                cut_time := prevObj.end_t
+            
+            line.set_x2(prevObj.l, cut_time)
+            label.set_x(prevObj.lbl, cut_time)
+            
+            if to_style_mode == "Auto"
+                line.set_style(prevObj.l, line.style_solid)
+            label.delete(prevObj.lbl) 
+
+    l_new = line.new(x1=start_time, y1=p, x2=start_time, y2=p, xloc=xloc.bar_time, width=1, style=to_get_active_style(), color=col)
+    lb_new = label.new(x=start_time, y=p, xloc=xloc.bar_time, text="", style=label.style_label_left, color=color(na), textcolor=col, text_font_family=to_font_fam, size=to_textSize)
+
+    // Determine End Time
+    int final_end = 0
+    if custom_end > 0
+        final_end := custom_end
+    else if use_hard_end
+        final_end := to_get_sess_end(start_time)
+
+    newObj = TO_Level.new(l_new, lb_new, p, true, txt, col, start_time, final_end) 
+    array.push(arr, newObj)
+    to_enforce_limit(arr, allow_hist)
+
+to_maintain_lines(array<TO_Level> arr, bool is_vis, bool is_time_label_mode, bool allow_hist) =>
+    if array.size(arr) > 0
+        int tf_ms = int(timeframe.in_seconds(timeframe.period) * 1000)
+        int future_t = time + (to_offset_val * tf_ms)
+        
+        for i = 0 to array.size(arr) - 1
+            obj = array.get(arr, i)
+            
+            // Extension Logic
+            if obj.active
+                int target_x = future_t
+                // STRICT END CHECK
+                if obj.end_t != 0 and future_t > obj.end_t
+                    target_x := obj.end_t
+                    
+                line.set_x2(obj.l, target_x)
+                label.set_x(obj.lbl, target_x)
+            
+            // Visibility & Color Logic
+            bool show_line = is_vis
+            if not allow_hist and not obj.active
+                show_line := false
+                
+            color final_c = show_line ? obj.c : color.new(color.white, 100) 
+            line.set_color(obj.l, final_c)
+            label.set_textcolor(obj.lbl, show_line ? obj.c : color.new(color.white, 100))
+            
+            // Dynamic Label Text
+            string final_txt = obj.name
+            
+            if is_time_label_mode
+                if to_sess_lbl_mode == "Time" or obj.name == "90m" 
+                    final_txt := str.format_time(obj.start_t, "HH:mm", "America/New_York")
+            
+            label.set_text(obj.lbl, final_txt)
+
+// =============================================================================
+// 3. CALCULATION LOGIC
+// =============================================================================
+
+to_calc_yr_func() =>
+    int m = month(time)
+    var float p = na
+    var int trig_t = 0
+    bool new_yr = false
+    if m == 4 and m[1] != 4
+        p := open
+        new_yr := true
+        trig_t := time 
+    [p, new_yr, trig_t]
+
+to_get_4th_sunday_timestamp(int y, int m) =>
+    int d = 1
+    int first_sunday_day = 0
+    for i = 0 to 6
+        int ts_check = timestamp(y, m, d + i, 0, 0)
+        if dayofweek(ts_check) == dayofweek.sunday
+            first_sunday_day := d + i
+            break
+    int fourth_sunday_day = first_sunday_day + 21
+    timestamp(y, m, fourth_sunday_day, 0, 0)
+
+to_calc_qt_func() =>
+    int m = month(time)
+    int y = year(time)
+    int q_start_m = m <= 3 ? 1 : m <= 6 ? 4 : m <= 9 ? 7 : 10
+    int target_time = to_get_4th_sunday_timestamp(y, q_start_m)
+    var float p = na
+    var int last_t = 0
+    var int trig_t = 0
+    bool new_qt = false
+    if time >= target_time and last_t != target_time
+        p := open
+        last_t := target_time
+        new_qt := true
+        trig_t := time 
+    [p, new_qt, trig_t]
+
+to_calc_mn_func(int t_hour) =>
+    string ny_tz = "America/New_York"
+    int d = dayofmonth(time, ny_tz)
+    int ny_dow = dayofweek(time, ny_tz)
+    int h = hour(time, ny_tz)
+    bool is_sec_wk = d >= 7 and d <= 13
+    bool is_sun = ny_dow == dayofweek.sunday
+    bool time_trig = h == t_hour or (h > t_hour and h[1] < t_hour)
+    var float p = na
+    var int trig_t = 0 
+    bool new_mn = false
+    var int last_m = -1
+    int cur_m = month(time, tz)
+    if is_sec_wk and is_sun and time_trig and cur_m != last_m
+        p := open
+        new_mn := true
+        last_m := cur_m
+        trig_t := time 
+    [p, new_mn, trig_t]
+
+to_calc_wk_func(int t_hour) =>
+    string ny_tz = "America/New_York"
+    int ny_dow = dayofweek(time, ny_tz)
+    int h = hour(time, ny_tz)
+    int min = minute(time, ny_tz)
+    bool is_mon = ny_dow == dayofweek.monday
+    bool time_trig = h == t_hour and min == 0
+    var float p = na
+    var int trig_t = 0 
+    bool new_wk = false
+    var int last_time = 0
+    if is_mon and time_trig and time != last_time
+        p := open
+        new_wk := true
+        last_time := time
+        trig_t := time 
+    [p, new_wk, trig_t] 
+
+to_calc_dy_func() =>
+    string ny_tz = "America/New_York"
+    int h = hour(time, ny_tz)
+    int d = dayofmonth(time, ny_tz)
+    int min = minute(time, ny_tz)
+    
+    var float p = na
+    var int trig_t = 0 
+    bool new_dy = false
+    var int last_d = -1
+    
+    if d != last_d and h == 0 and min == 0
+        p := open
+        new_dy := true
+        last_d := d
+        trig_t := time 
+    [p, new_dy, trig_t]
+
+// -- Session Logic --
+to_calc_session_func(int t_h, int t_m) =>
+    string ny_tz = "America/New_York"
+    int h = hour(time, ny_tz)
+    int min = minute(time, ny_tz)
+    bool time_trig = (h == t_h and min == t_m)
+    var float p = na
+    var int trig_t = 0
+    bool new_sess = false
+    var int last_trigger_time = 0
+    if time_trig and time != last_trigger_time
+        p := open
+        new_sess := true
+        trig_t := time
+        last_trigger_time := time
+    [p, new_sess, trig_t]
+
+// -- 90 Minute Logic (:23 / :53) --
+to_calc_90m_func() =>
+    string ny_tz = "America/New_York"
+    int h = hour(time, ny_tz)
+    int min = minute(time, ny_tz)
+    int y = year(time, ny_tz)
+    int m = month(time, ny_tz)
+    int d = dayofmonth(time, ny_tz)
+    
+    bool is_cycle_a = (h % 3 == 0) and (min == 23)
+    bool is_cycle_b = (h % 3 == 1) and (min == 53)
+    
+    bool time_trig = is_cycle_a or is_cycle_b
+
+    var float p = na
+    var int trig_t = 0
+    var int strict_end_t = 0 
+    bool new_90 = false
+    var int last_trigger_time = 0
+    
+    if time_trig and time != last_trigger_time
+        p := open
+        new_90 := true
+        trig_t := time
+        last_trigger_time := time
+        
+        if is_cycle_a
+            strict_end_t := timestamp(tz, y, m, d, h+1, 30, 0)
+        if is_cycle_b
+            strict_end_t := timestamp(tz, y, m, d, h+2, 0, 0)
+
+    [p, new_90, trig_t, strict_end_t]
+
+// =============================================================================
+// 4. DATA FETCHING
+// =============================================================================
+
+[to_yr_p, to_yr_new, to_yr_t] = request.security(syminfo.tickerid, "W", to_calc_yr_func(), lookahead=barmerge.lookahead_on)
+[to_qt_p, to_qt_new, to_qt_t] = request.security(syminfo.tickerid, "D", to_calc_qt_func(), lookahead=barmerge.lookahead_on)
+[to_mn_p, to_mn_new, to_mn_t] = request.security(syminfo.tickerid, "240", to_calc_mn_func(to_triggerHour), lookahead=barmerge.lookahead_on)
+[to_wk_p, to_wk_new, to_wk_t] = request.security(syminfo.tickerid, "60", to_calc_wk_func(to_triggerHour), lookahead=barmerge.lookahead_on)
+
+[to_dy_p, to_dy_new, to_dy_t] = request.security(syminfo.tickerid, "1", to_calc_dy_func(), lookahead=barmerge.lookahead_on)
+
+[to_asia_p, to_asia_new, to_asia_t] = request.security(syminfo.tickerid, "1", to_calc_session_func(to_t_asia_h, to_t_asia_m), lookahead=barmerge.lookahead_on)
+[to_lon_p, to_lon_new, to_lon_t]    = request.security(syminfo.tickerid, "1", to_calc_session_func(to_t_lon_h, to_t_lon_m), lookahead=barmerge.lookahead_on)
+[to_nyam_p, to_nyam_new, to_nyam_t] = request.security(syminfo.tickerid, "1", to_calc_session_func(to_t_nyam_h, to_t_nyam_m), lookahead=barmerge.lookahead_on)
+[to_nypm_p, to_nypm_new, to_nypm_t] = request.security(syminfo.tickerid, "1", to_calc_session_func(to_t_nypm_h, to_t_nypm_m), lookahead=barmerge.lookahead_on)
+
+[to_nm_p, to_nm_new, to_nm_t, to_nm_end_t] = request.security(syminfo.tickerid, "1", to_calc_90m_func(), lookahead=barmerge.lookahead_on)
+
+// =============================================================================
+// 5. DRAWING & EXECUTION
+// =============================================================================
+
+var array<TO_Level> to_arr_yr = array.new<TO_Level>()
+var array<TO_Level> to_arr_qt = array.new<TO_Level>()
+var array<TO_Level> to_arr_mn = array.new<TO_Level>()
+var array<TO_Level> to_arr_wk = array.new<TO_Level>()
+var array<TO_Level> to_arr_dy = array.new<TO_Level>()
+var array<TO_Level> to_arr_sess = array.new<TO_Level>() 
+var array<TO_Level> to_arr_90m  = array.new<TO_Level>() 
+
+var int to_last_yr_t = 0
+var int to_last_qt_t = 0
+var int to_last_mn_t = 0
+var int to_last_wk_t = 0
+var int to_last_dy_t = 0
+
+var int to_last_asia_t = 0
+var int to_last_lon_t  = 0
+var int to_last_nyam_t = 0
+var int to_last_nypm_t = 0
+
+var int to_last_nm_t   = 0 
+
+bool to_chg_yr = timeframe.change("12M") 
+bool to_chg_qt = timeframe.change("3M") 
+bool to_chg_mn = timeframe.change("1M")  
+bool to_chg_wk = timeframe.change("1W")  
+
+if to_chg_yr
+    to_force_close_period(to_arr_yr, to_hist_yr)
+if to_chg_qt
+    to_force_close_period(to_arr_qt, to_hist_qt)
+if to_chg_mn
+    to_force_close_period(to_arr_mn, to_hist_mn)
+if to_chg_wk
+    to_force_close_period(to_arr_wk, to_hist_wk)
+
+if to_show_yr_open and not na(to_yr_p) and to_yr_t != to_last_yr_t
+    to_manage_history(to_arr_yr, to_yr_p, to_yr_t, to_n_yr, to_c_yr, to_hist_yr, false, 0)
+    to_last_yr_t := to_yr_t
+
+if to_show_qt_open and not na(to_qt_p) and to_qt_t != to_last_qt_t
+    to_manage_history(to_arr_qt, to_qt_p, to_qt_t, to_n_qt, to_c_qt, to_hist_qt, false, 0)
+    to_last_qt_t := to_qt_t
+
+if to_show_mn_open and not na(to_mn_p) and to_mn_t != to_last_mn_t
+    to_manage_history(to_arr_mn, to_mn_p, to_mn_t, to_n_mn, to_c_mn, to_hist_mn, false, 0)
+    to_last_mn_t := to_mn_t
+
+if to_show_wk_open and not na(to_wk_p) and to_wk_t != to_last_wk_t
+    to_manage_history(to_arr_wk, to_wk_p, to_wk_t, to_n_wk, to_c_wk, to_hist_wk, false, 0)
+    to_last_wk_t := to_wk_t
+
+if to_show_dy_open and not na(to_dy_p) and to_dy_t != to_last_dy_t
+    to_manage_history(to_arr_dy, to_dy_p, to_dy_t, to_n_dy, to_c_dy, to_hist_dy, false, 0)
+    to_last_dy_t := to_dy_t
+
+if to_show_sess_open
+    if not na(to_asia_p) and to_asia_t != to_last_asia_t
+        to_manage_history(to_arr_sess, to_asia_p, to_asia_t, "AO", to_c_sess, to_hist_sess, true, 0)
+        to_last_asia_t := to_asia_t
+    if not na(to_lon_p) and to_lon_t != to_last_lon_t
+        to_manage_history(to_arr_sess, to_lon_p, to_lon_t, "LO", to_c_sess, to_hist_sess, true, 0)
+        to_last_lon_t := to_lon_t
+    if not na(to_nyam_p) and to_nyam_t != to_last_nyam_t
+        to_manage_history(to_arr_sess, to_nyam_p, to_nyam_t, "NYO[AM]", to_c_sess, to_hist_sess, true, 0)
+        to_last_nyam_t := to_nyam_t
+    if not na(to_nypm_p) and to_nypm_t != to_last_nypm_t
+        to_manage_history(to_arr_sess, to_nypm_p, to_nypm_t, "NYO[PM]", to_c_sess, to_hist_sess, true, 0)
+        to_last_nypm_t := to_nypm_t
+
+if to_show_90m_open
+    if not na(to_nm_p) and to_nm_t != to_last_nm_t
+        to_manage_history(to_arr_90m, to_nm_p, to_nm_t, "90m", to_c_90m, to_hist_90m, true, to_nm_end_t)
+        to_last_nm_t := to_nm_t
+
+// Maintenance
+to_vis_yr = to_is_visible(to_yr_min, to_yr_max)
+to_vis_qt = to_is_visible(to_qt_min, to_qt_max)
+to_vis_mn = to_is_visible(to_mn_min, to_mn_max)
+to_vis_wk = to_is_visible(to_wk_min, to_wk_max)
+to_vis_dy = to_is_visible(to_dy_min, to_dy_max)
+to_vis_sess = to_is_visible(to_sess_min, to_sess_max)
+to_vis_90m  = to_is_visible(to_nm_min, to_nm_max) 
+
+to_maintain_lines(to_arr_yr, to_vis_yr, false, to_hist_yr)
+to_maintain_lines(to_arr_qt, to_vis_qt, false, to_hist_qt)
+to_maintain_lines(to_arr_mn, to_vis_mn, false, to_hist_mn)
+to_maintain_lines(to_arr_wk, to_vis_wk, false, to_hist_wk)
+to_maintain_lines(to_arr_dy, to_vis_dy, false, to_hist_dy)
+to_maintain_lines(to_arr_sess, to_vis_sess, true, to_hist_sess) 
+to_maintain_lines(to_arr_90m, to_vis_90m, true, to_hist_90m) 
+
+// =============================================================================
+// 6. PRICE TRACKING TABLE
+// =============================================================================
+
+var table to_tbl = table.new(to_table_pos, 2, 8, border_width = 0) 
+
+to_is_current_period(int trigger_time, string type) =>
+    bool current = false
+    if trigger_time == 0 or na(trigger_time)
+        current := false
+    else
+        string ny_tz = "America/New_York"
+        int t_y = year(trigger_time, ny_tz)
+        int t_m = month(trigger_time, ny_tz)
+        int t_d = dayofmonth(trigger_time, ny_tz)
+        int c_y = year(time, ny_tz)
+        int c_m = month(time, ny_tz)
+        int c_d = dayofmonth(time, ny_tz)
+        
+        if type == "D"
+            current := (t_d == c_d and t_m == c_m and t_y == c_y)
+        else if type == "W"
+            int t_w = weekofyear(trigger_time, ny_tz)
+            int c_w = weekofyear(time, ny_tz)
+            bool is_sunday = dayofweek(time, ny_tz) == dayofweek.sunday
+            current := (t_w == c_w and t_y == c_y and not is_sunday)
+        else if type == "M"
+            current := (t_m == c_m and t_y == c_y)
+        else if type == "Q"
+            int t_q = math.floor((t_m - 1) / 3)
+            int c_q = math.floor((c_m - 1) / 3)
+            current := (t_q == c_q and t_y == c_y)
+        else if type == "Y"
+            current := (t_y == c_y)
+        else if type == "SESS" or type == "90M"
+            current := (t_d == c_d and t_m == c_m and t_y == c_y)
+    current
+
+to_get_status(float lvl_price, int trig_t, string period_type) =>
+    string txt = "Not Open"
+    color col = to_c_tbl_none
+    if not na(lvl_price) and to_is_current_period(trig_t, period_type)
+        if close > lvl_price
+            txt := "Above"
+            col := to_c_tbl_above
+        else
+            txt := "Below"
+            col := to_c_tbl_below
+    [txt, col]
+
+to_get_array_status(array<TO_Level> arr, string label_name) =>
+    string label_txt = label_name 
+    string status_txt = "Not Open"
+    color col = to_c_tbl_none
+    
+    if array.size(arr) > 0
+        lastObj = array.get(arr, array.size(arr)-1)
+        bool is_time_valid = lastObj.end_t == 0 or time < lastObj.end_t
+
+        if lastObj.active and is_time_valid
+            if close > lastObj.price
+                status_txt := "Above"
+                col := to_c_tbl_above
+            else
+                status_txt := "Below"
+                col := to_c_tbl_below
+    [label_txt, status_txt, col]
+
+if to_show_table and barstate.islast
+    int row_idx = 0
+    
+    if to_tbl_show_90m
+        [lbl_90, txt_90, col_90] = to_get_array_status(to_arr_90m, "90-Min")
+        table.cell(to_tbl, 0, row_idx, lbl_90, text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, txt_90, text_color=col_90, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+
+    if to_tbl_show_sess
+        [lbl_s, txt_s, col_s] = to_get_array_status(to_arr_sess, "Session")
+        table.cell(to_tbl, 0, row_idx, lbl_s, text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, txt_s, text_color=col_s, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+
+    if to_tbl_show_dy
+        [st_txt, st_col] = to_get_status(to_dy_p, to_dy_t, "D") 
+        table.cell(to_tbl, 0, row_idx, "Daily", text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, st_txt, text_color=st_col, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+        
+    if to_tbl_show_wk
+        [st_txt, st_col] = to_get_status(to_wk_p, to_wk_t, "W") 
+        table.cell(to_tbl, 0, row_idx, "Weekly", text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, st_txt, text_color=st_col, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+
+    if to_tbl_show_mn
+        [st_txt, st_col] = to_get_status(to_mn_p, to_mn_t, "M") 
+        table.cell(to_tbl, 0, row_idx, "Monthly", text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, st_txt, text_color=st_col, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+
+    if to_tbl_show_qt
+        [st_txt, st_col] = to_get_status(to_qt_p, to_qt_t, "Q") 
+        table.cell(to_tbl, 0, row_idx, "Quarterly", text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, st_txt, text_color=st_col, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+        
+    if to_tbl_show_yr
+        [st_txt, st_col] = to_get_status(to_yr_p, to_yr_t, "Y") 
+        table.cell(to_tbl, 0, row_idx, "Yearly", text_color=chart.fg_color, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        table.cell(to_tbl, 1, row_idx, st_txt, text_color=st_col, text_size=to_table_txt_size, bgcolor=color(na), text_font_family=to_font_fam)
+        row_idx += 1
+//@version=6
+//("Volume Profile & Period Separator", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_polylines_count=100)
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © tradeforopp
+
+
+
+var g_MASTER = "Master Toggles"
+toggle_vp = input.bool(true, "Enable Volume Profile", group=g_MASTER)
+toggle_sep = input.bool(true, "Enable Period Separator", group=g_MASTER)
+
+
+// Auto mapping function for HTF based on chart timeframe
+auto_map_tf(string chart_tf) =>
+    float ts = timeframe.in_seconds(chart_tf)
+    string mapped = chart_tf
+    if ts <= 60
+        mapped := "15"
+    else if ts <= 180
+        mapped := "30"
+    else if ts <= 300
+        mapped := "60"
+    else if ts <= 900
+        mapped := "240"
+    else if ts <= 3600
+        mapped := "D"
+    else if ts <= 14400
+        mapped := "W"
+    else if ts <= 604800
+        mapped := "1M"
+    mapped
+
+var g_VP = "Volume Profile"
+rows = input.int(200, "Rows", tooltip = "The number of price levels/rows that will be used to approximate the cumulative volume profile", group = g_VP)
+tf_input = input.string("Auto", "Profile Timeframe (Auto uses fractal)", tooltip = "The aggregate timeframe that the volume profile represents", group = g_VP)
+ltf = input.timeframe("1", "Resolution Timeframe", tooltip = "The timeframe whose price data will be used to build the volume profile", group = g_VP)
+extend = input.int(100, "Profile Extend %", 0, 100, tooltip = "How much the volume profile should extend to the next session", group = g_VP)
+vp_color = input.color(color.new(color.blue, 70), "Profile Color", tooltip = "The color of the volume profile", group = g_VP)
+
+string vp_tf = tf_input == "Auto" ? auto_map_tf(timeframe.period) : tf_input
+
+var g_VPOC = "Volume Point of Control"
+show_vpoc = input.bool(true, "Show VPOC", inline = "VPOC", tooltip = "Whether to show the volume point of control (VPOC), or the level with the largest volume in a given volume profile", group = g_VPOC)
+vpoc_color = input.color(color.yellow, "", inline = "VPOC", group = g_VPOC)
+ext_vpoc = input.bool(true, "Extend Last N VPOCs", inline = "EXT", tooltip = "Whether to extend the last N number of VPOCs to the right of the chart", group = g_VPOC)
+ext_n_vpoc = input.int(5, "", 0, 100, inline = "EXT", group = g_VPOC)
+vpoc_label_above = input.timeframe("D", "Show Labels Above", tooltip = "With extend last N VPOCs turned on, labels displaying the date of said VPOCs will be shown when the profile timeframe is greater than or equal to this", group = g_VPOC)
+vpoc_label_size = input.string('Normal', "Label Size", options = ['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'], tooltip = "The size of VPOC date labels", group = g_VPOC)
+vpoc_width = input.int(2, "Line Width", tooltip = "The width of VPOC lines", group = g_VPOC)
+
+var g_HVN = "High Volume Nodes"
+show_hvn = input.bool(true, "Show Previous HVNs", inline = "HVN", tooltip = "Whether to show high volume nodes (HVNs) from the previous session. Using the previous session's close, HVNs above this price will use the first color, and HVNs below this price will use the second color", group = g_HVN)
+hvn_color_bull = input.color(color.new(color.teal, 70), "", inline = "HVN", group = g_HVN)
+hvn_color_bear = input.color(color.new(color.red, 70), "", inline = "HVN", group = g_HVN)
+hvn_strength = input.int(10, "HVN Strength", tooltip = "HVNs are validated when a given level in the volume profile contains more volume than this many rows both above and below it", group = g_HVN)
+hvn_type = input.string("Areas", "HVN Type", options = ['Levels','Areas'], tooltip = "Whether to display HVNs as levels (lines) or areas (boxes). Levels use a solid line to denote the prior session's VPOC, and dotted lines for all other HVNs", group = g_HVN)
+hvn_width = input.int(1, "Line Width", tooltip = "The width of HVN lines, if the HVN type is selected as levels", group = g_HVN)
+
+get_label_size(x) =>
+    result = switch x
+        'Auto'   => size.auto
+        'Tiny'   => size.tiny
+        'Small'  => size.small
+        'Normal' => size.normal
+        'Large'  => size.large
+        'Huge'   => size.huge
+
+var vpoc = array.new_line()
+var dates = array.new_label()
+
+var values = array.new_float()
+var x_vol = array.new_int()
+var y_vol = array.new_float()
+
+var hvn_lines = array.new_line()
+var hvn_boxes = array.new_box()
+
+var hvn_Ly = array.new_float()
+var hvn_By = array.new_float()
+
+var PLA = array.new<chart.point>()
+var polyline PL = na
+var line temp_vpoc = na
+
+var int lb_idx = na
+var int lb_time = na
+
+ltf := timeframe.in_seconds(ltf) <= timeframe.in_seconds() ? ltf : ""
+[ltf_H, ltf_L, ltf_V] = request.security_lower_tf(syminfo.tickerid, ltf, [high, low, volume])
+
+if not na(lb_idx)
+    lb = bar_index - lb_idx > 0 ? (bar_index - lb_idx) : 1
+
+    y_max = ta.highest(high[1], lb)
+    y_min =  ta.lowest(low[1], lb)
+
+    if toggle_vp and (timeframe.change(vp_tf) or barstate.islast)
+        x_vol.clear()
+        y_vol.clear()
+        values.clear()
+
+        for i = 0 to rows
+            y = y_min + i * (y_max - y_min) / rows
+            x_vol.push(lb_time)
+            y_vol.push(y)
+            values.push(0)
+
+        for i = bar_index - lb_idx to 1
+            vol = ltf_V[i]
+            if vol.size() > 0
+                for j = 0 to values.size() - 1
+                    temp = y_vol.get(j)
+                    for k = 0 to vol.size() - 1
+                        H = ltf_H[i]
+                        L = ltf_L[i]
+                        V = ltf_V[i]
+                        if H.get(k) >= temp and L.get(k) <= temp
+                            add = math.floor(V.get(k) / ((H.get(k) - L.get(k)) / (y_max - y_min) / rows))
+                            values.set(j, values.get(j) + add)
+                        
+        max_y = y_vol.get(values.indexof(values.max()))
+        sf = values.max() / (time[1] - lb_time) / (extend / 100)
+
+        for j = 0 to values.size() - 1
+            set = (lb_time + math.floor(values.get(j) / sf))
+            x_vol.set(j, set)
+
+        PLA.clear()
+        PLA.push(chart.point.from_time(lb_time, y_min))
+        for i = 0 to x_vol.size() - 1
+            PLA.push(chart.point.from_time(x_vol.get(i), y_vol.get(i)))
+        PLA.push(chart.point.from_time(lb_time, y_max))
+        
+        PL.delete()
+        if timeframe.change(vp_tf)
+            polyline.new(PLA, curved = false, closed = true, line_color = vp_color, fill_color = vp_color, xloc = xloc.bar_time)
+            temp_vpoc.delete()
+            vpoc.unshift(line.new(lb_time, max_y, time, max_y, xloc = xloc.bar_time, color = show_vpoc ? vpoc_color : na, extend = ext_vpoc ? extend.right : extend.none, width = vpoc_width))
+            if ext_vpoc and timeframe.in_seconds(vp_tf) >= timeframe.in_seconds(vpoc_label_above)
+                dates.unshift(label.new(bar_index, max_y, str.format("{0,date,short}", time("", session = "0000-0000", timezone = "America/New_York")), textcolor = show_vpoc ? vpoc_color : na, color = na, size = get_label_size(vpoc_label_size)))
+        else
+            PL := polyline.new(PLA, curved = false, closed = true, line_color = vp_color, fill_color = vp_color, xloc = xloc.bar_time)
+            if na(temp_vpoc)
+                temp_vpoc := line.new(lb_time, max_y, time, max_y, xloc = xloc.bar_time, color = show_vpoc ? vpoc_color : na, extend = ext_vpoc ? extend.right : extend.none, width = vpoc_width)
+            temp_vpoc.set_y1(max_y)
+            temp_vpoc.set_y2(max_y)
+            temp_vpoc.set_x2(time)
+
+get_hvn() =>
+    if values.size() > hvn_strength
+        for i = 0 to values.size() - 1
+            start = values.get(i)
+            valid = true
+
+            for j = -hvn_strength to hvn_strength
+                k = i + j
+                if k < 0 or k > values.size() - 1
+                    continue
+                else
+                    if j != 0 and values.get(k) > start
+                        valid := false
+                        break
+
+            if valid
+                idx = values.indexof(start)
+
+                if idx != -1
+                    y1 = y_vol.get(idx)
+                    y2 = y_vol.get(idx)
+                    val = y_vol.get(idx)
+
+                    if i < values.size() - 1
+                        for m = i to values.size() - 2
+                            if values.get(m + 1) > values.get(m)
+                                y1 := y_vol.get(m)
+                                break
+                    if i > 0
+                        for m = i to 1
+                            if values.get(m - 1) > values.get(m)
+                                y2 := y_vol.get(m)
+                                break
+
+                    new_color = close[1] > math.avg(y1, y2) ? hvn_color_bull : hvn_color_bear
+
+                    if hvn_type == "Levels"
+                        if hvn_Ly.indexof(val) == -1
+                            hvn_Ly.unshift(val)
+                            hvn_lines.unshift(line.new(time, val, time + timeframe.in_seconds(vp_tf)*1000, val, xloc = xloc.bar_time, color = color.new(new_color, 0), style = start == values.max() ? line.style_solid : line.style_dotted, width = hvn_width))
+                    else
+                        if hvn_By.indexof(y1) == -1
+                            hvn_By.unshift(y1)
+                            hvn_boxes.unshift(box.new(time, y1, time + timeframe.in_seconds(vp_tf)*1000, y2, xloc = xloc.bar_time, bgcolor = new_color, border_color = na))
+
+if toggle_vp and timeframe.change(vp_tf)
+    lb_idx := bar_index
+    lb_time := time
+
+    if show_hvn
+        hvn_lines.clear()
+        hvn_boxes.clear()
+        hvn_Ly.clear()
+        hvn_By.clear()
+        get_hvn()
+
+    if ext_vpoc and vpoc.size() > ext_n_vpoc
+        line.set_extend(vpoc.pop(), extend.none)
+        if timeframe.in_seconds(vp_tf) >= timeframe.in_seconds(vpoc_label_above)
+            label.delete(dates.pop())
+
+if dates.size() > 0
+    for i = 0 to dates.size() - 1
+        dates.get(i).set_x(bar_index + 20)
+
+// =========================================
+// PERIOD SEPARATOR INDICATOR
+// =========================================
+// © DedreduPlessis
+// Created: 2024-07-13
+// Last modified: 2024-07-14
+// Version 1.0
+
+
+// Inputs
+sepColorInput    = input.color   (color.gray,    "Separator Color")
+sepStyleInput    = input.string  ("Dotted",      "Separator Style", options = ["Solid", "Dashed", "Dotted"])
+sepWidthInput    = input.int     (1,             "Separator Width", minval = 1)
+sepTimeframeInput = input.string("Auto", "Separator Timeframe (Auto uses fractal)")  // Timeframe for the separator
+
+// Function to get the line style
+getLineStyle(string input) =>
+    switch input
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+
+// Function to draw the period separator
+drawPeriodSeparator(color color, string style, int width, string timeframe) =>
+    if timeframe.change(timeframe)
+        line.new(
+             x1     = bar_index,
+             x2     = bar_index,
+             y1     = high + syminfo.mintick,
+             y2     = low,
+             extend = extend.both,
+             color  = color,
+             style  = getLineStyle(style),
+             width  = width
+             )
+
+// Draw the period separator based on the selected timeframe and visible on the same or lower timeframes
+mapped_sep_tf = sepTimeframeInput == "Auto" ? auto_map_tf(timeframe.period) : sepTimeframeInput
+if toggle_sep and timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(mapped_sep_tf)
+    drawPeriodSeparator(sepColorInput, sepStyleInput, sepWidthInput, mapped_sep_tf)
+
