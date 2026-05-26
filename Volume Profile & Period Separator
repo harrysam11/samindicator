@@ -1,0 +1,254 @@
+//@version=6
+indicator("Volume Profile & Period Separator", overlay=true, max_boxes_count=500, max_lines_count=500, max_labels_count=500, max_polylines_count=100)
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © tradeforopp
+
+
+
+var g_MASTER = "Master Toggles"
+toggle_vp = input.bool(true, "Enable Volume Profile", group=g_MASTER)
+toggle_sep = input.bool(true, "Enable Period Separator", group=g_MASTER)
+
+
+// Auto mapping function for HTF based on chart timeframe
+auto_map_tf(string chart_tf) =>
+    float ts = timeframe.in_seconds(chart_tf)
+    string mapped = chart_tf
+    if ts <= 60
+        mapped := "15"
+    else if ts <= 180
+        mapped := "30"
+    else if ts <= 300
+        mapped := "60"
+    else if ts <= 900
+        mapped := "240"
+    else if ts <= 3600
+        mapped := "D"
+    else if ts <= 14400
+        mapped := "W"
+    else if ts <= 604800
+        mapped := "1M"
+    mapped
+
+var g_VP = "Volume Profile"
+rows = input.int(200, "Rows", tooltip = "The number of price levels/rows that will be used to approximate the cumulative volume profile", group = g_VP)
+tf_input = input.string("Auto", "Profile Timeframe (Auto uses fractal)", tooltip = "The aggregate timeframe that the volume profile represents", group = g_VP)
+ltf = input.timeframe("1", "Resolution Timeframe", tooltip = "The timeframe whose price data will be used to build the volume profile", group = g_VP)
+extend = input.int(100, "Profile Extend %", 0, 100, tooltip = "How much the volume profile should extend to the next session", group = g_VP)
+vp_color = input.color(color.new(color.blue, 70), "Profile Color", tooltip = "The color of the volume profile", group = g_VP)
+
+tf = tf_input == "Auto" ? auto_map_tf(timeframe.period) : tf_input
+
+var g_VPOC = "Volume Point of Control"
+show_vpoc = input.bool(true, "Show VPOC", inline = "VPOC", tooltip = "Whether to show the volume point of control (VPOC), or the level with the largest volume in a given volume profile", group = g_VPOC)
+vpoc_color = input.color(color.yellow, "", inline = "VPOC", group = g_VPOC)
+ext_vpoc = input.bool(true, "Extend Last N VPOCs", inline = "EXT", tooltip = "Whether to extend the last N number of VPOCs to the right of the chart", group = g_VPOC)
+ext_n_vpoc = input.int(5, "", 0, 100, inline = "EXT", group = g_VPOC)
+vpoc_label_above = input.timeframe("D", "Show Labels Above", tooltip = "With extend last N VPOCs turned on, labels displaying the date of said VPOCs will be shown when the profile timeframe is greater than or equal to this", group = g_VPOC)
+vpoc_label_size = input.string('Normal', "Label Size", options = ['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'], tooltip = "The size of VPOC date labels", group = g_VPOC)
+vpoc_width = input.int(2, "Line Width", tooltip = "The width of VPOC lines", group = g_VPOC)
+
+var g_HVN = "High Volume Nodes"
+show_hvn = input.bool(true, "Show Previous HVNs", inline = "HVN", tooltip = "Whether to show high volume nodes (HVNs) from the previous session. Using the previous session's close, HVNs above this price will use the first color, and HVNs below this price will use the second color", group = g_HVN)
+hvn_color_bull = input.color(color.new(color.teal, 70), "", inline = "HVN", group = g_HVN)
+hvn_color_bear = input.color(color.new(color.red, 70), "", inline = "HVN", group = g_HVN)
+hvn_strength = input.int(10, "HVN Strength", tooltip = "HVNs are validated when a given level in the volume profile contains more volume than this many rows both above and below it", group = g_HVN)
+hvn_type = input.string("Areas", "HVN Type", options = ['Levels','Areas'], tooltip = "Whether to display HVNs as levels (lines) or areas (boxes). Levels use a solid line to denote the prior session's VPOC, and dotted lines for all other HVNs", group = g_HVN)
+hvn_width = input.int(1, "Line Width", tooltip = "The width of HVN lines, if the HVN type is selected as levels", group = g_HVN)
+
+get_label_size(x) =>
+    result = switch x
+        'Auto'   => size.auto
+        'Tiny'   => size.tiny
+        'Small'  => size.small
+        'Normal' => size.normal
+        'Large'  => size.large
+        'Huge'   => size.huge
+
+var vpoc = array.new_line()
+var dates = array.new_label()
+
+var values = array.new_float()
+var x_vol = array.new_int()
+var y_vol = array.new_float()
+
+var hvn_lines = array.new_line()
+var hvn_boxes = array.new_box()
+
+var hvn_Ly = array.new_float()
+var hvn_By = array.new_float()
+
+var PLA = array.new<chart.point>()
+var polyline PL = na
+var line temp_vpoc = na
+
+var int lb_idx = na
+var int lb_time = na
+
+ltf := timeframe.in_seconds(ltf) <= timeframe.in_seconds() ? ltf : ""
+[ltf_H, ltf_L, ltf_V] = request.security_lower_tf(syminfo.tickerid, ltf, [high, low, volume])
+
+if not na(lb_idx)
+    lb = bar_index - lb_idx > 0 ? (bar_index - lb_idx) : 1
+
+    y_max = ta.highest(high[1], lb)
+    y_min =  ta.lowest(low[1], lb)
+
+    if toggle_vp and (timeframe.change(tf) or barstate.islast)
+        x_vol.clear()
+        y_vol.clear()
+        values.clear()
+
+        for i = 0 to rows
+            y = y_min + i * (y_max - y_min) / rows
+            x_vol.push(lb_time)
+            y_vol.push(y)
+            values.push(0)
+
+        for i = bar_index - lb_idx to 1
+            vol = ltf_V[i]
+            if vol.size() > 0
+                for j = 0 to values.size() - 1
+                    temp = y_vol.get(j)
+                    for k = 0 to vol.size() - 1
+                        H = ltf_H[i]
+                        L = ltf_L[i]
+                        V = ltf_V[i]
+                        if H.get(k) >= temp and L.get(k) <= temp
+                            add = math.floor(V.get(k) / ((H.get(k) - L.get(k)) / (y_max - y_min) / rows))
+                            values.set(j, values.get(j) + add)
+                        
+        max_y = y_vol.get(values.indexof(values.max()))
+        sf = values.max() / (time[1] - lb_time) / (extend / 100)
+
+        for j = 0 to values.size() - 1
+            set = (lb_time + math.floor(values.get(j) / sf))
+            x_vol.set(j, set)
+
+        PLA.clear()
+        PLA.push(chart.point.from_time(lb_time, y_min))
+        for i = 0 to x_vol.size() - 1
+            PLA.push(chart.point.from_time(x_vol.get(i), y_vol.get(i)))
+        PLA.push(chart.point.from_time(lb_time, y_max))
+        
+        PL.delete()
+        if timeframe.change(tf)
+            polyline.new(PLA, curved = false, closed = true, line_color = vp_color, fill_color = vp_color, xloc = xloc.bar_time)
+            temp_vpoc.delete()
+            vpoc.unshift(line.new(lb_time, max_y, time, max_y, xloc = xloc.bar_time, color = show_vpoc ? vpoc_color : na, extend = ext_vpoc ? extend.right : extend.none, width = vpoc_width))
+            if ext_vpoc and timeframe.in_seconds(tf) >= timeframe.in_seconds(vpoc_label_above)
+                dates.unshift(label.new(bar_index, max_y, str.format("{0,date,short}", time("", session = "0000-0000", timezone = "America/New_York")), textcolor = show_vpoc ? vpoc_color : na, color = na, size = get_label_size(vpoc_label_size)))
+        else
+            PL := polyline.new(PLA, curved = false, closed = true, line_color = vp_color, fill_color = vp_color, xloc = xloc.bar_time)
+            if na(temp_vpoc)
+                temp_vpoc := line.new(lb_time, max_y, time, max_y, xloc = xloc.bar_time, color = show_vpoc ? vpoc_color : na, extend = ext_vpoc ? extend.right : extend.none, width = vpoc_width)
+            temp_vpoc.set_y1(max_y)
+            temp_vpoc.set_y2(max_y)
+            temp_vpoc.set_x2(time)
+
+get_hvn() =>
+    if values.size() > hvn_strength
+        for i = 0 to values.size() - 1
+            start = values.get(i)
+            valid = true
+
+            for j = -hvn_strength to hvn_strength
+                k = i + j
+                if k < 0 or k > values.size() - 1
+                    continue
+                else
+                    if j != 0 and values.get(k) > start
+                        valid := false
+                        break
+
+            if valid
+                idx = values.indexof(start)
+
+                if idx != -1
+                    y1 = y_vol.get(idx)
+                    y2 = y_vol.get(idx)
+                    val = y_vol.get(idx)
+
+                    if i < values.size() - 1
+                        for m = i to values.size() - 2
+                            if values.get(m + 1) > values.get(m)
+                                y1 := y_vol.get(m)
+                                break
+                    if i > 0
+                        for m = i to 1
+                            if values.get(m - 1) > values.get(m)
+                                y2 := y_vol.get(m)
+                                break
+
+                    new_color = close[1] > math.avg(y1, y2) ? hvn_color_bull : hvn_color_bear
+
+                    if hvn_type == "Levels"
+                        if hvn_Ly.indexof(val) == -1
+                            hvn_Ly.unshift(val)
+                            hvn_lines.unshift(line.new(time, val, time + timeframe.in_seconds(tf)*1000, val, xloc = xloc.bar_time, color = color.new(new_color, 0), style = start == values.max() ? line.style_solid : line.style_dotted, width = hvn_width))
+                    else
+                        if hvn_By.indexof(y1) == -1
+                            hvn_By.unshift(y1)
+                            hvn_boxes.unshift(box.new(time, y1, time + timeframe.in_seconds(tf)*1000, y2, xloc = xloc.bar_time, bgcolor = new_color, border_color = na))
+
+if toggle_vp and timeframe.change(tf)
+    lb_idx := bar_index
+    lb_time := time
+
+    if show_hvn
+        hvn_lines.clear()
+        hvn_boxes.clear()
+        hvn_Ly.clear()
+        hvn_By.clear()
+        get_hvn()
+
+    if ext_vpoc and vpoc.size() > ext_n_vpoc
+        line.set_extend(vpoc.pop(), extend.none)
+        if timeframe.in_seconds(tf) >= timeframe.in_seconds(vpoc_label_above)
+            label.delete(dates.pop())
+
+if dates.size() > 0
+    for i = 0 to dates.size() - 1
+        dates.get(i).set_x(bar_index + 20)
+
+// =========================================
+// PERIOD SEPARATOR INDICATOR
+// =========================================
+// © DedreduPlessis
+// Created: 2024-07-13
+// Last modified: 2024-07-14
+// Version 1.0
+
+
+// Inputs
+sepColorInput    = input.color   (color.gray,    "Separator Color")
+sepStyleInput    = input.string  ("Dotted",      "Separator Style", options = ["Solid", "Dashed", "Dotted"])
+sepWidthInput    = input.int     (1,             "Separator Width", minval = 1)
+sepTimeframeInput = input.string("Auto", "Separator Timeframe (Auto uses fractal)")  // Timeframe for the separator
+
+// Function to get the line style
+getLineStyle(string input) =>
+    switch input
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+
+// Function to draw the period separator
+drawPeriodSeparator(color color, string style, int width, string timeframe) =>
+    if timeframe.change(timeframe)
+        line.new(
+             x1     = bar_index,
+             x2     = bar_index,
+             y1     = high + syminfo.mintick,
+             y2     = low,
+             extend = extend.both,
+             color  = color,
+             style  = getLineStyle(style),
+             width  = width
+             )
+
+// Draw the period separator based on the selected timeframe and visible on the same or lower timeframes
+mapped_sep_tf = sepTimeframeInput == "Auto" ? auto_map_tf(timeframe.period) : sepTimeframeInput
+if toggle_sep and timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(mapped_sep_tf)
+    drawPeriodSeparator(sepColorInput, sepStyleInput, sepWidthInput, mapped_sep_tf)
+
