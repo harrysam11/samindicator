@@ -410,17 +410,17 @@ string group_sweep              = "Sweep ━━━━━━━━━━━━━
 string group_chart_fvg          = "Chart FVG / Liquidity Voids ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 htf1.settings.show              := input.bool(true, 'HTF 1          ', inline = 'htf1')
-htf_1                           = input.timeframe('15', '', inline = 'htf1')
+htf_1                           = input.timeframe('90', '', inline = 'htf1')
 htf1.settings.htf := htf_1
 htf1.settings.max_display       := input.int(6, '', inline = 'htf1')
 
 htf2.settings.show              := input.bool(false, 'HTF 2          ', inline = 'htf2')
-htf_2                           = input.timeframe('45', '', inline = 'htf2')
+htf_2                           = input.timeframe('90', '', inline = 'htf2')
 htf2.settings.htf := htf_2
 htf2.settings.max_display       := input.int(6, '', inline = 'htf2')
 
 htf3.settings.show              := input.bool(true, 'HTF 3          ', inline = 'htf3')
-htf_3                           = input.timeframe('60', '', inline = 'htf3')
+htf_3                           = input.timeframe('360', '', inline = 'htf3')
 htf3.settings.htf := htf_3
 htf3.settings.max_display       := input.int(6, '', inline = 'htf3')
 

@@ -1,0 +1,1407 @@
+// This Pine ScriptÂ® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Â© samusdtt
+
+// This Pine ScriptÂ® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Â© harrysam11
+
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// Â© Zeiierman
+
+//@version=5
+indicator("Sam", overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
+
+// ~~ Inputs {
+tf       = input.timeframe("D","Timeframe", group="Higher Timeframe Candles")
+numb     = input.int(3,"Amount of Candles",minval=0, maxval=20, group="Higher Timeframe Candles")+1
+dn_col   = input.color(color.new(color.black,10), title="Dn", inline="Candles", group="Higher Timeframe Candles")
+dn_wick  = input.color(color.new(color.black,0), title="Wick", inline="Candles", group="Higher Timeframe Candles")
+up_col   = input.color(color.new(#ffffff, 0), title="Up",inline="Candles", group="Higher Timeframe Candles")
+up_wick  = input.color(color.new(color.black,0), title="Wick", inline="Candles", group="Higher Timeframe Candles")
+Range    = input.bool(false,"Range High/Low", inline="range", group="Range")
+Mid      = input.bool(true,"Range Mid", inline="range", group="Range")
+high_col = input.color(color.rgb(139, 139, 139, 68), title="High", inline="range 1", group="Range")
+low_col  = input.color(color.rgb(54, 58, 69, 69), title="Low",inline="range 1", group="Range")
+mid_col  = input.color(color.rgb(120, 123, 134, 70), title="Mid",inline="range 1", group="Range")
+loc      = input.int(3,"Location", group="Location Settings")
+panel_spacing = input.int(15, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
+loc2 = loc + panel_spacing
+
+// ~~ Table Inputs {
+showTable      = input.bool(true,title="Show Table", inline="tbl", group="Table")
+TblSize        = input.string(size.normal,title="",options=[size.auto,size.tiny,size.small,size.normal,size.large,size.huge],inline="tbl", group="Table")
+pos            = input.string(position.top_right, title="",options =[position.top_right,position.top_center,
+ position.top_left,position.bottom_right,position.bottom_center,position.bottom_left,position.middle_right,position.middle_left],inline="tbl", group="Table")
+textcolor      = input.color(color.white, title="Text",inline="tbl_col", group="Table")
+bgcolor        = input.color(color.new(color.black,30), title="Bg",inline="tbl_col", group="Table")
+//~~~}
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ New Feature Toggles (Extras)
+n_extras = "Extras"
+enable_all_toggles = input.bool(true, "Enable All New Features", group=n_extras)
+enable_auto_htf = input.bool(true, "Auto-change HTF & Separators", group=n_extras, tooltip="Auto-map: 1m→15m, 5m→60m, 15m→4h, 30m→4h, 60m→D, 4h→W, D→1M")
+enable_htf_countdown = input.bool(true, "HTF Candle Countdown", group=n_extras)
+
+// Auto mapping function for HTF based on chart timeframe
+auto_map_tf(chart_tf) =>
+    ts = timeframe.in_seconds(chart_tf)
+    switch ts
+        60      => "90"     // 1min → 15min
+        180     => "90"     // 3min → 30min
+        300     => "90"     // 5min → 60min
+        900     => "90"    // 15min → 4hour
+        1800    => "D"      // 30min → daily
+        3600    => "D"      // 60min → daily
+        7200    => "D"      // 2hour → daily
+        10800   => "W"      // 3hour → weekly
+        14400   => "W"      // 4hour → weekly
+        86400   => "1M"     // daily → monthly
+        604800  => "1M"     // weekly → monthly
+        => chart_tf         // default: return as-is
+
+// Auto mapping function for HTF panel 2 based on chart timeframe
+auto_map_tf_p2(chart_tf) =>
+    ts = timeframe.in_seconds(chart_tf)
+    switch ts
+        60      => "360"     // 1min → 1H
+        180     => "360"    // 3min → 4H
+        300     => "360"      // 5min → 1D
+        900     => "360"    // 15min → 1D
+        1800    => "W"    // 30min → weekly
+        3600    => "W"      // 60min → daily
+        7200    => "W"      // 2hour → daily
+        10800   => "1M"      // 3hour → weekly
+        14400   => "1M"      // 4hour → weekly
+        86400   => "1M"     // daily → monthly
+        604800  => "1M"     // weekly → monthly
+        => chart_tf         // default: return as-is
+
+// Calculate effective HTF
+htfCandTF = enable_all_toggles and enable_auto_htf ? auto_map_tf(timeframe.period) : tf
+htfCandTF_p2 = enable_all_toggles and enable_auto_htf ? auto_map_tf_p2(timeframe.period) : tf
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ HTF Error Message {
+tfs = str.tonumber(htfCandTF)
+if str.tostring(htfCandTF) == "1D"
+    tfs := 1440 
+error = str.tonumber(timeframe.period)>=tfs
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ UDT {
+type HTF
+    array<box> candle
+    array<line> wickH
+    array<line> wickL
+    array<float> hl  
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Variables {
+b = bar_index
+var candle    = HTF.new(array.new<box>(numb),array.new<line>(numb),array.new<line>(numb),array.new<float>(numb*2))
+[o,h,l,c]     = request.security(syminfo.tickerid,htfCandTF,[open,high,low,close],lookahead=barmerge.lookahead_on)
+// Auto-mapped HTF series for panel 2
+[o_p2,h_p2,l_p2,c_p2] = request.security(syminfo.tickerid, htfCandTF_p2, [open,high,low,close], lookahead=barmerge.lookahead_on)
+
+// Second HTF candle storage (panel 2)
+var candle2 = HTF.new(array.new<box>(numb), array.new<line>(numb), array.new<line>(numb), array.new<float>(numb*2))
+
+// ~~ HTF Countdown Label (positioned above HTF candles)
+var label htfCountLbl = na
+if enable_all_toggles and enable_htf_countdown and barstate.islast
+    tfSecs = timeframe.in_seconds(htfCandTF)
+    tfSecs := tfSecs == 0 ? 60 : tfSecs
+    rem_ms = tfSecs * 1000 - (time % (tfSecs * 1000))
+    rem_s = math.max(0, math.round(rem_ms / 1000))
+    hrs = math.floor(rem_s / 3600)
+    mins = math.floor((rem_s % 3600) / 60)
+    secs = rem_s % 60
+    hrsStr = hrs > 0 ? (hrs < 10 ? "0" + str.tostring(hrs) : str.tostring(hrs)) + ":" : ""
+    minsStr = mins < 10 ? "0" + str.tostring(mins) : str.tostring(mins)
+    secsStr = secs < 10 ? "0" + str.tostring(secs) : str.tostring(secs)
+    txt = "HTF: " + hrsStr + minsStr + ":" + secsStr
+    // Position above HTF candles (using loc for x positioning and candle high for y)
+    htfCandleX = b + numb * 4 + loc + numb
+    htfCandleY = candle.hl.max() + (syminfo.mintick * 50)
+    if na(htfCountLbl)
+        htfCountLbl := label.new(htfCandleX, htfCandleY, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_center, color=color.new(color.white, 100), textcolor=color.blue, size=size.small)
+    else
+        label.set_xy(htfCountLbl, htfCandleX, htfCandleY)
+        label.set_text(htfCountLbl, txt)
+        label.set_color(htfCountLbl, color.new(color.white, 100))
+        label.set_textcolor(htfCountLbl, color.blue)
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Code {
+if ta.change(o) //New candle declaration
+    candle.candle.shift().delete()
+    candle.wickH.shift().delete()
+    candle.wickL.shift().delete()
+    candle.hl.shift()
+    candle.hl.shift()
+
+    candle.candle.push(box.new(b+numb*4+loc,math.max(o,c),b+numb*4+loc+2,math.min(o,c),color.black,border_width=1,bgcolor=o>c?dn_col:up_col))
+    candle.wickH.push(line.new(b+numb*4+loc+1,math.max(o,c),b+numb*4+loc+1,h,color=o>c?dn_col:up_col))
+    candle.wickL.push(line.new(b+numb*4+loc+1,math.min(o,c),b+numb*4+loc+1,l,color=o>c?dn_col:up_col))
+    candle.hl.push(h)
+    candle.hl.push(l)
+else // Relocate previous & current candles
+    d = loc
+    for [i,x] in candle.candle
+        if i<numb-1
+            x.set_left(b+d*2)
+            x.set_right(b+d*2+2)
+            candle.wickH.get(i).set_x1(b+d*2+1)
+            candle.wickH.get(i).set_x2(b+d*2+1)
+            candle.wickL.get(i).set_x1(b+d*2+1)
+            candle.wickL.get(i).set_x2(b+d*2+1)
+        else
+            x.set_lefttop(b+d*2,math.max(o,c))
+            x.set_rightbottom(b+d*2+2,math.min(o,c))
+            x.set_bgcolor(o>c?dn_col:up_col)
+            candle.wickH.get(i).set_xy1(b+d*2+1,math.max(o,c))
+            candle.wickH.get(i).set_xy2(b+d*2+1,h)
+            candle.wickH.get(i).set_color(o>c?dn_wick:up_wick)
+            candle.wickL.get(i).set_xy1(b+d*2+1,math.min(o,c))
+            candle.wickL.get(i).set_xy2(b+d*2+1,l)
+            candle.wickL.get(i).set_color(o>c?dn_wick:up_wick)
+            candle.hl.set(numb*2-2,h)
+            candle.hl.set(numb*2-1,l)
+        d += 2
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// ~~ Panel 2: User-selected HTF candles (separate panel)
+if ta.change(o_p2) //New candle declaration for panel2
+    candle2.candle.shift().delete()
+    candle2.wickH.shift().delete()
+    candle2.wickL.shift().delete()
+    candle2.hl.shift()
+    candle2.hl.shift()
+
+    candle2.candle.push(box.new(b+numb*4+loc2,math.max(o_p2,c_p2),b+numb*4+loc2+2,math.min(o_p2,c_p2),color.black,border_width=1,bgcolor=o_p2>c_p2?dn_col:up_col))
+    candle2.wickH.push(line.new(b+numb*4+loc2+1,math.max(o_p2,c_p2),b+numb*4+loc2+1,h_p2,color=o_p2>c_p2?dn_col:up_col))
+    candle2.wickL.push(line.new(b+numb*4+loc2+1,math.min(o_p2,c_p2),b+numb*4+loc2+1,l_p2,color=o_p2>c_p2?dn_col:up_col))
+    candle2.hl.push(h_p2)
+    candle2.hl.push(l_p2)
+else // Relocate previous & current candles for panel2
+    d2 = loc2
+    for [i,x] in candle2.candle
+        if i<numb-1
+            x.set_left(b+d2*2)
+            x.set_right(b+d2*2+2)
+            candle2.wickH.get(i).set_x1(b+d2*2+1)
+            candle2.wickH.get(i).set_x2(b+d2*2+1)
+            candle2.wickL.get(i).set_x1(b+d2*2+1)
+            candle2.wickL.get(i).set_x2(b+d2*2+1)
+        else
+            x.set_lefttop(b+d2*2,math.max(o_p2,c_p2))
+            x.set_rightbottom(b+d2*2+2,math.min(o_p2,c_p2))
+            x.set_bgcolor(o_p2>c_p2?dn_col:up_col)
+            candle2.wickH.get(i).set_xy1(b+d2*2+1,math.max(o_p2,c_p2))
+            candle2.wickH.get(i).set_xy2(b+d2*2+1,h_p2)
+            candle2.wickH.get(i).set_color(o_p2>c_p2?dn_wick:up_wick)
+            candle2.wickL.get(i).set_xy1(b+d2*2+1,math.min(o_p2,c_p2))
+            candle2.wickL.get(i).set_xy2(b+d2*2+1,l_p2)
+            candle2.wickL.get(i).set_color(o_p2>c_p2?dn_wick:up_wick)
+            candle2.hl.set(numb*2-2,h_p2)
+            candle2.hl.set(numb*2-1,l_p2)
+        d2 += 2
+
+// ~~ Range {
+if Range
+    RangeHigh  = line.new(b,candle.hl.max(),b+numb*4+loc+2,candle.hl.max(),color=high_col,extend=extend.none)
+    RangeLow   = line.new(b,candle.hl.min(),b+numb*4+loc+2,candle.hl.min(),color=low_col,extend=extend.none)
+    (RangeHigh[1]).delete()
+    (RangeLow[1]).delete()
+
+if Mid    
+    RangeMid = line.new(b,math.avg(candle.hl.max(),candle.hl.min()),b+numb*4+loc+2,math.avg(candle.hl.max(),candle.hl.min()),color=mid_col,extend=extend.none)
+    (RangeMid[1]).delete()
+
+//~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
+
+// Inputs
+sepColorInput    = input.color   (color.rgb(119, 119, 119, 40),    "Separator Color")
+sepStyleInput    = input.string  ("Dotted",      "Separator Style", options = ["Solid", "Dashed", "Dotted"])
+sepWidthInput    = input.int     (1,             "Separator Width", minval = 1)
+sepTimeframeInput = input.timeframe("60", "Separator Timeframe Manual Override", tooltip="When auto-map is enabled, this is overridden by auto mapping function")
+
+// Calculate effective separator timeframe based on auto-HTF mapping
+sepEffective = enable_all_toggles and enable_auto_htf ? auto_map_tf(timeframe.period) : sepTimeframeInput
+
+// Function to get the line style
+getLineStyle(string input) =>
+    switch input
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+
+// Function to draw the period separator
+drawPeriodSeparator(color color, string style, int width, string tfm) =>
+    if timeframe.change(tfm)
+        line.new(
+             x1     = bar_index,
+             x2     = bar_index,
+             y1     = high + syminfo.mintick,
+             y2     = low,
+             extend = extend.both,
+             color  = color,
+             style  = getLineStyle(style),
+             width  = width
+             )
+
+// Draw the period separator based on the auto-mapped or selected timeframe
+if timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(sepEffective)
+    drawPeriodSeparator(sepColorInput, sepStyleInput, sepWidthInput, sepEffective)
+
+//@version=5
+//indicator("SMT Divergences [LuxAlgo]", "LuxAlgo - SMT Divergences", overlay = true,)
+//------------------------------------------------------------------------------
+//Settings
+//-----------------------------------------------------------------------------{
+length = input.int(3, 'Pivot Lookback', minval = 2)
+
+//Symbol A
+useSym1 = input(true, 'Comparison Symbol', inline = 'symA')
+sym1    = input.symbol('CME_MINI_DL:ES1!', '', inline = 'symA')
+
+//Symbol B
+useSym2 = input(true, 'Comparison Symbol', inline = 'symB')
+sym2   = input.symbol('CBOT_MINI_DL:YM1!', '', inline = 'symB')
+
+//Style
+bullDivCss = input.color(#000000, 'Swing High', group = 'Style')
+bearDivCss = input.color(#000000, 'Swing Low', group = 'Style')
+
+//Dashboard
+showDash = input(false, 'Show Dashboard'                                                               , group = 'Dashboard')
+dashLoc  = input.string('Top Right', 'Location', options = ['Top Right', 'Bottom Right', 'Bottom Left'], group = 'Dashboard')
+textSize = input.string('Small', 'Size'        , options = ['Tiny', 'Small', 'Normal']                 , group = 'Dashboard')
+
+//-----------------------------------------------------------------------------}
+//Function
+//-----------------------------------------------------------------------------{
+n = bar_index
+
+get_hl() => [high, low, close]
+
+//Swing highs divergences
+get_divergence(ph, y2, sym_y2, css)=>
+    var float y1 = na
+    var float sym_y1 = na
+    var int x1 = na
+    var smt = 0
+
+    if y2 != y2[1] and sym_y2 != sym_y2[1] 
+        //Test for SMT
+        if (y2 - y1) * (sym_y2 - sym_y1) < 0
+            line.new(n[length], y2, x1, y1, color = css)
+
+            smt += 1
+        
+        sym_y1 := sym_y2
+        y1 := y2
+        x1 := n[length]
+    else if (ph and y2 > y2[1]) or (not ph and y2 < y2[1]) 
+        sym_y1 := na
+        y1 := y2
+        x1 := n[length]
+    
+    smt
+
+//-----------------------------------------------------------------------------}
+//Main variables
+//-----------------------------------------------------------------------------{
+var phN = 0, var plN = 0
+var ph_smt1 = 0.
+var pl_smt1 = 0.
+var ph_smt2 = 0.
+var pl_smt2 = 0.
+
+ticker1 = syminfo.ticker(sym1)
+ticker2 = syminfo.ticker(sym2)
+
+//-----------------------------------------------------------------------------}
+//Detect swing highs/lows and divergences
+//-----------------------------------------------------------------------------{
+ph = fixnan(ta.pivothigh(length, length))
+pl = fixnan(ta.pivotlow(length, length))
+phN += ph != ph[1] ? 1 : 0
+plN += pl != pl[1] ? 1 : 0
+
+//Comparison symbol pivots
+[h1, l1, c1] = request.security(sym1, timeframe.period, get_hl())
+[h2, l2, c2] = request.security(sym2, timeframe.period, get_hl())
+
+//Detect swing high divergences
+if useSym1
+    sym_ph1 = fixnan(ta.pivothigh(h1, length, length))
+    sym_pl1 = fixnan(ta.pivotlow(l1, length, length))
+
+    ph_smt1 := get_divergence(true, ph, sym_ph1, bullDivCss)
+    pl_smt1 := get_divergence(false, pl, sym_pl1, bearDivCss)
+
+if useSym2
+    sym_ph2 = fixnan(ta.pivothigh(h2, length, length))
+    sym_pl2 = fixnan(ta.pivotlow(l2, length, length))
+    
+    ph_smt2 := get_divergence(true, ph, sym_ph2, bullDivCss)
+    pl_smt2 := get_divergence(false, pl, sym_pl2, bearDivCss)
+
+txt = ''
+if ph != ph[1]
+    if ph_smt1 > ph_smt1[1]
+        txt += ticker1
+    if ph_smt2 > ph_smt2[1]
+        txt += txt != '' ? ' | ' : ''
+        txt += ticker2
+
+        if txt != ''
+            label.new(n[length], ph, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=bullDivCss, size=size.tiny)
+else
+    if pl_smt1 > pl_smt1[1]
+        txt += ticker1
+    if pl_smt2 > pl_smt2[1]
+        txt += txt != '' ? ' | ' : ''
+        txt += ticker2
+
+        if txt != ''
+            label.new(n[length], pl, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=bearDivCss, size=size.tiny)
+    
+//-----------------------------------------------------------------------------}
+//Tables
+//-----------------------------------------------------------------------------{
+var table_position = dashLoc == 'Bottom Left' ? position.bottom_left 
+  : dashLoc == 'Top Right' ? position.top_right 
+  : position.bottom_right
+
+var table_size = textSize == 'Tiny' ? size.tiny 
+  : textSize == 'Small' ? size.small 
+  : size.normal
+
+var tb = table.new(table_position, 3, 3
+  , bgcolor = #1e222d
+  , border_color = #373a46
+  , border_width = 1
+  , frame_color = #373a46
+  , frame_width = 1)
+
+if barstate.isfirst and showDash
+    tb.cell(1, 0, 'Swing High', text_color = color.white)
+    tb.cell(2, 0, 'Swing Low', text_color = color.white)
+    
+    tb.cell(0, 1, ticker1, text_color = color.white)
+    tb.cell(0, 2, ticker2, text_color = color.white)
+
+if barstate.islast and showDash
+    //Symbol 1
+    tb.cell(1, 1, str.format('{0} ({1, number, percent})', ph_smt1, ph_smt1 / phN)
+      , text_color = bullDivCss)
+    tb.cell(2, 1, str.format('{0} ({1, number, percent})', pl_smt1, pl_smt1 / plN)
+      , text_color = bearDivCss)
+    
+    //Symbol 2
+    tb.cell(1, 2, str.format('{0} ({1, number, percent})', ph_smt2, ph_smt2 / phN)
+      , text_color = bullDivCss)
+    tb.cell(2, 2, str.format('{0} ({1, number, percent})', pl_smt2, pl_smt2 / plN)
+      , text_color = bearDivCss)
+
+// © toodegrees
+//MACROS
+
+//#region[GLOBAL]
+var line[]  EXT = array.new_line()
+var label[] LBL = array.new_label()
+oneDayMS        = 86400000
+oneBarMS        = time_close-time
+noColor         =color.new(#ffffff,100)
+one             = ta.highest(timeframe.in_seconds("1500")/timeframe.in_seconds(timeframe.period))+syminfo.mintick*10
+y_btm_Line1     = one
+y_top_Line1     = one+syminfo.mintick*5
+//#endregion
+
+
+//#region[INPUTS]
+_macroC =  input.color(color.new(#0011ff,0),  title="Macro Color",        inline='main')
+_mode   = input.string("On Chart",              title="",                   inline='main', options=["On Chart", "New Pane"], tooltip='When "New Pane" is selected, make sure you move the indicator to a New Pane as well, it is not automatic.')
+
+_showL  =   input.bool(true,                    title="Macro Label?",       inline='sh')
+_mTxt   =   input.bool(true,                   title="Show Time?",         inline='sh')
+_extt   =	input.bool(false,                   title="Macro Projections?", inline='sh', tooltip='Extends On Chart Macro lines towards price.')
+
+_bgm    =  input.color(color.new(#4caf50,70), title="Macro Color",     inline='bc',     tooltip='Visible only in "New Pane" mode')
+//#endregion
+
+
+//#region[FUNCTIONS]
+time_isMacro(int H_start, int M_start, int H_end, int M_end) =>
+    h = hour(time, "America/New_York")
+    m = minute(time, "America/New_York")
+	h==H_start ? (H_start!=H_end ? m>=M_start : m>=M_start and m<M_end) : (h>H_start ? (h==H_end ? m<M_end : h<H_end) : false)
+
+
+_controlMacroLine(line[] _lines, label[] _lbl, bool _time) =>
+	if _time
+		_lbl.last().set_x(math.round(math.avg(_lines.get(_lines.size()-2).get_x1(),time)))
+		if high>_lines.last().get_y2()-syminfo.mintick*10
+			_lines.get(_lines.size()-2).set_y2(high+(syminfo.mintick*10))
+			_lines.last().set_y1(high+(syminfo.mintick*10))
+			_lines.last().set_y2(high+(syminfo.mintick*10))
+			LBL.last().set_y(high+(syminfo.mintick*10))
+		if na or _lines.last().get_x2() == time
+			_lines.last().set_x2(time+oneBarMS)
+
+_controlMacroBox(box[] _boxes, bool _time, bool _friday) =>
+	dly = _friday?oneDayMS*3:oneDayMS
+	if na or _time
+		_boxes.last().set_right(time+dly)
+
+method memoryCleanLine(line[] A) =>
+	if A.size()>300
+		for i=0 to 3
+			A.shift().delete()
+method memoryCleanLabel(label[] A) =>
+	if A.size()>100
+		A.shift().delete()
+
+macroOC(line[] LINES, bool _time, string _kzTime, bool _friday)=>
+	dly  = _friday?oneDayMS*3:oneDayMS
+	_txt = _mTxt?"M"+"\n"+_kzTime:"M"
+	_tt  = "M\n"+_kzTime
+
+	// Overlay False
+	if not _time[1] and _time
+		_vline1 = line.new(time,y_btm_Line1,time,y_top_Line1,xloc=xloc.bar_time,color=_macroC)
+		LINES.push(_vline1)
+		_hline = line.new(time,y_top_Line1,time+oneBarMS,y_top_Line1,xloc=xloc.bar_time,color=_macroC)
+		LINES.push(_hline)
+		if _extt
+			EXT.push(line.new(time,high,time,_vline1.get_y2(),xloc=xloc.bar_time,color=_macroC,style=line.style_dotted))
+
+		if _mode=="On Chart"
+			LBL.push(label.new(time
+							 , LINES.get(LINES.size()-2).get_y2()
+							 , _showL?_txt:""
+							 , tooltip=_tt
+							 , xloc=xloc.bar_time
+							 , style=label.style_label_down
+							 , color=noColor
+							 , textcolor=_macroC
+							 , size=size.small))
+
+	if _time[1] and not _time and LINES.size()>0 and LBL.size()>0
+		_vline2 = line.new(time,y_btm_Line1,time,y_top_Line1,xloc=xloc.bar_time,color=_macroC)
+		LBL.last().set_x(math.round(math.avg(LINES.get(LINES.size()-2).get_x1(),time)))
+		if y_top_Line1 > LINES.get(LINES.size()-2).get_y2()
+			LINES.get(LINES.size()-2).set_y2(y_top_Line1)
+			LINES.last().set_y1(y_top_Line1)
+			LINES.last().set_y2(y_top_Line1)
+			LBL.last().set_y(y_top_Line1)
+		else if y_top_Line1 < LINES.get(LINES.size()-2).get_y2()
+			_vline2.set_y2(LINES.get(LINES.size()-2).get_y2())
+		if _extt
+			EXT.push(line.new(time,high,time,_vline2.get_y2(),xloc=xloc.bar_time,color=_macroC,style=line.style_dotted))
+
+		LINES.push(_vline2)
+
+	if LINES.size()>0 and LBL.size()>0
+		_controlMacroLine(LINES, LBL, _time)
+		
+
+macroNP(box[] BOXES, bool _time, string _kzTime, bool _friday)=>
+	dly  = _friday?86400000*3:86400000
+	_col = _bgm
+	_tt  = "M\n"+_kzTime
+	end  = not _time and _time[1]
+
+	// Overlay False
+	var _plotNP = false
+	if not _time[1] and _time
+		_macro = box.new(time+dly,2,time+dly,0,_macroC,xloc=xloc.bar_time,bgcolor=_col)
+		BOXES.push(_macro)
+		_plotNP := true
+
+	if _time[1] and not _time and BOXES.size()>0
+		_controlMacroBox(BOXES, true, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+		_plotNP := false
+		macroL = label.new(math.round(math.avg(BOXES.last().get_left(),BOXES.last().get_right()))
+					     , 1
+						 , xloc=xloc.bar_time
+						 , style=label.style_label_center
+						 , color=noColor
+						 , tooltip=_tt
+						 , text='ⓘ\n\n\n\n\n\n'
+						 , textcolor=_macroC
+						 , size=size.small)
+
+	if _time and _plotNP
+		_controlMacroBox(BOXES, _time, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+//#endregion
+
+
+//#region[LOGIC]
+show_macro_feature  = input.bool(true, "Show Macro Feature", group="Macro Tracker", tooltip="Master toggle to show/hide all Macro plots.")
+
+show1              = input.bool(false, title="01:50 - 02:10", group="Hourly Macros")
+var line[] _LINES1 = array.new_line()
+var box[] _BOXES1  = array.new_box()
+time1              = time_isMacro(0, 50, 1, 10)
+lbl1               = "1AM"
+
+show2              = input.bool(true, title="02:50 - 03:10", group="Hourly Macros")
+var line[] _LINES2 = array.new_line()
+var box[] _BOXES2  = array.new_box()
+time2              = time_isMacro(1, 50, 2, 10)
+lbl2               = "2AM"
+
+show3              = input.bool(true, title="02:50 - 03:10", group="Hourly Macros")
+var line[] _LINES3 = array.new_line()
+var box[] _BOXES3  = array.new_box()
+time3              = time_isMacro(2, 50, 3, 10)
+lbl3               = "3AM"
+
+show4              = input.bool(false, title="03:50 - 04:10", group="Hourly Macros")
+var line[] _LINES4 = array.new_line()
+var box[] _BOXES4  = array.new_box()
+time4              = time_isMacro(3, 50, 4, 10)
+lbl4               = "4AM"
+
+show5              = input.bool(false, title="04:50 - 05:10", group="Hourly Macros")
+var line[] _LINES5 = array.new_line()
+var box[] _BOXES5  = array.new_box()
+time5              = time_isMacro(4, 50, 5, 10)
+lbl5               = "5AM"
+
+show6              = input.bool(false, title="05:50 - 06:10", group="Hourly Macros")
+var line[] _LINES6 = array.new_line()
+var box[] _BOXES6  = array.new_box()
+time6              = time_isMacro(5, 50, 6, 10)
+lbl6               = "6AM"
+
+show7              = input.bool(false, title="06:50 - 07:10", group="Hourly Macros")
+var line[] _LINES7 = array.new_line()
+var box[] _BOXES7  = array.new_box()
+time7              = time_isMacro(6, 50, 7, 10)
+lbl7               = "7AM"
+
+show8              = input.bool(false, title="07:50 - 08:10", group="Hourly Macros")
+var line[] _LINES8 = array.new_line()
+var box[] _BOXES8  = array.new_box()
+time8              = time_isMacro(7, 50, 8, 10)
+lbl8               = "8AM"
+
+show9              = input.bool(false, title="08:50 - 09:10", group="Hourly Macros")
+var line[] _LINES9 = array.new_line()
+var box[] _BOXES9  = array.new_box()
+time9              = time_isMacro(8, 50, 9, 10)
+lbl9               = "9AM"
+
+show10              = input.bool(true, title="09:50 - 10:10", group="Hourly Macros")
+var line[] _LINES10 = array.new_line()
+var box[] _BOXES10  = array.new_box()
+time10              = time_isMacro(9, 50, 10, 10)
+lbl10               = "10AM"
+
+show11              = input.bool(true, title="10:50 - 11:10", group="Hourly Macros")
+var line[] _LINES11 = array.new_line()
+var box[] _BOXES11  = array.new_box()
+time11              = time_isMacro(10, 50, 11, 10)
+lbl11               = "11AM"
+
+show12              = input.bool(false, title="11:50 - 12:10", group="Hourly Macros")
+var line[] _LINES12 = array.new_line()
+var box[] _BOXES12  = array.new_box()
+time12              = time_isMacro(11, 50, 12, 10)
+lbl12               = "12PM"
+
+show13              = input.bool(false, title="12:50 - 13:10", group="Hourly Macros")
+var line[] _LINES13 = array.new_line()
+var box[] _BOXES13  = array.new_box()
+time13              = time_isMacro(12, 50, 13, 10)
+lbl13               = "1PM"
+
+show14              = input.bool(false, title="13:50 - 14:10", group="Hourly Macros")
+var line[] _LINES14 = array.new_line()
+var box[] _BOXES14  = array.new_box()
+time14              = time_isMacro(13, 50, 14, 10)
+lbl14               = "2PM"
+
+show17              = input.bool(false, title="16:50 - 17:10", group="Hourly Macros")
+var line[] _LINES17 = array.new_line()
+var box[] _BOXES17  = array.new_box()
+time17              = time_isMacro(16, 50, 17, 10)
+lbl17               = "5PM"
+
+show18              = input.bool(false, title="17:50 - 18:10", group="Hourly Macros")
+var line[] _LINES18 = array.new_line()
+var box[] _BOXES18  = array.new_box()
+time18              = time_isMacro(17, 50, 18, 10)
+lbl18               = "6PM"
+
+show19              = input.bool(false, title="18:50 - 19:10", group="Hourly Macros")
+var line[] _LINES19 = array.new_line()
+var box[] _BOXES19  = array.new_box()
+time19              = time_isMacro(18, 50, 19, 10)
+lbl19               = "7PM"
+
+show20              = input.bool(true, title="19:50 - 20:10", group="Hourly Macros")
+var line[] _LINES20 = array.new_line()
+var box[] _BOXES20  = array.new_box()
+time20              = time_isMacro(19, 50, 20, 10)
+lbl20               = "8PM"
+
+show21              = input.bool(false, title="20:50 - 21:10", group="Hourly Macros")
+var line[] _LINES21 = array.new_line()
+var box[] _BOXES21  = array.new_box()
+time21              = time_isMacro(20, 50, 21, 10)
+lbl21               = "9PM"
+
+show22              = input.bool(false, title="21:50 - 22:10", group="Hourly Macros")
+var line[] _LINES22 = array.new_line()
+var box[] _BOXES22  = array.new_box()
+time22              = time_isMacro(21, 50, 22, 10)
+lbl22               = "10PM"
+
+show23              = input.bool(false, title="22:50 - 23:10", group="Hourly Macros")
+var line[] _LINES23 = array.new_line()
+var box[] _BOXES23  = array.new_box()
+time23              = time_isMacro(22, 50, 23, 10)
+lbl23               = "11PM"
+
+show24              = input.bool(false, title="23:50 - 00:10", group="Hourly Macros")
+var line[] _LINES24 = array.new_line()
+var box[] _BOXES24  = array.new_box()
+time24              = time_isMacro(23, 50, 0, 10)
+lbl24               = "12AM"
+
+
+show15              = input.bool(false, title="14:50 - 15:10", group="Last Hour NY PM Macros")
+var line[] _LINES15 = array.new_line()
+var box[] _BOXES15  = array.new_box()
+time15              = time_isMacro(14, 50, 15, 10)
+lbl15               = "3PM"
+
+showPM1              = input.bool(true, title="15:15 - 15:45", group="Last Hour NY PM Macros")
+var line[] _LINESPM1 = array.new_line()
+var box[] _BOXESPM1  = array.new_box()
+timePM1              = time_isMacro(15, 15, 15, 45)
+lblPM1               = "3:15PM"
+
+show16              = input.bool(false, title="15:50 - 16:10", group="Last Hour NY PM Macros")
+var line[] _LINES16 = array.new_line()
+var box[] _BOXES16  = array.new_box()
+time16              = time_isMacro(15, 50, 16, 10)
+lbl16               = "4PM"
+
+// 																		                        //\//////////////////////////////////////////////////////////////////////////////////////////////////////////////\///
+//                                                                                              //  INSTRUCTIONS TO ADD CUSTOM MACROs (PART 1):                                                                    //
+//                                                                                              //  1.1) Copy these four lines of code and add them below the instruction box -> // CUSTOM MACROS;                 //
+// var line[] _lines_YourMacroName = array.new_line()                                           //       Make sure the text is not gray like these instructions. To do that, remove the '//' in front.             //
+// var box[] _boxes_YourMacroName  = array.new_box()                                            //  1.2) Replace 'YourMacroName' with whatever you want in these four lines.                                       //
+// _time_YourMacroName            = time_isMacro(startHour, startMinute, endHour, endMinute)    //  1.3) Add your macro time window in the format: "hhmm-hhmm:1234567"                                             //
+// _lbl_YourMacroName             = "hh:mm - hh:mm"                                             //  1.4) Add your macro time text in _lbl_YourMacroName, this will be displayed in the tooltips,                   //
+// 																		                        //       and in the MACRO label on chart, if toggled on.                                                           //
+// 																		                        //                                                                                                                 //
+// 																		                        ///\//////////////////////////////////////////.   PART 2 BELOW   .////////////////////////////////////////////////\//
+
+// CUSTOM MACROS
+// Your custom macros go here
+//#endregion
+
+
+//#region[PLOT]
+macro_active = show_macro_feature and timeframe.isintraday and timeframe.multiplier >= 1 and timeframe.multiplier <= 5
+if _mode=="On Chart" and macro_active
+	if show1
+		macroOC(_LINES1, time1, lbl1, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //\////////////////////////////////////////////////////////////////////////////\///
+	if show2																							  //  INSTRUCTIONS TO ADD CUSTOM MACROs (PART 2):                                  //
+		macroOC(_LINES2, time2, lbl2, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //  2.1) Find line 364 under "CUSTOM MACROS ON CHART PLOT" title.                //
+	if show3																							  //  2.2) Copy it to the following line, remove '//' and replace 'YourMacroName'  //
+		macroOC(_LINES3, time3, lbl3, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //       with what you used above in step (1.2).                                 //
+	if show4																							  //  2.3) Make sure the beginning of the line is aligned with all the ones above; //
+		macroOC(_LINES4, time4, lbl4, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //       To do that press 'Tab' once, or add spaces until they match.            //
+	if show5																							  //                                                                               //
+		macroOC(_LINES5, time5, lbl5, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       ///\/////////////////////////.   CONT'D BELOW   .///////////////////////////////\//
+	if show6
+		macroOC(_LINES6, time6, lbl6, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       
+	if show7
+		macroOC(_LINES7, time7, lbl7, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       
+	if show8
+		macroOC(_LINES8, time8, lbl8, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       
+	if show9
+		macroOC(_LINES9, time9, lbl9, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       
+	if show10
+		macroOC(_LINES10, time10, lbl10, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show11
+		macroOC(_LINES11, time11, lbl11, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show12
+		macroOC(_LINES12, time12, lbl12, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show13
+		macroOC(_LINES13, time13, lbl13, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show14
+		macroOC(_LINES14, time14, lbl14, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show15
+		macroOC(_LINES15, time15, lbl15, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show16
+		macroOC(_LINES16, time16, lbl16, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show17
+		macroOC(_LINES17, time17, lbl17, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show18
+		macroOC(_LINES18, time18, lbl18, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show19
+		macroOC(_LINES19, time19, lbl19, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show20
+		macroOC(_LINES20, time20, lbl20, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show21
+		macroOC(_LINES21, time21, lbl21, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show22
+		macroOC(_LINES22, time22, lbl22, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show23
+		macroOC(_LINES23, time23, lbl23, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if show24
+		macroOC(_LINES24, time24, lbl24, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+	if showPM1
+		macroOC(_LINESPM1, timePM1, lblPM1, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')
+
+	// CUSTOM MACROS ON CHART PLOT
+	// macroOC(_lines_YourMacroName, _timeYourMacroName, _lblYourMacroName, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto', '')
+
+
+else if macro_active
+
+	if show1
+		macroNP(_BOXES1, time1, lbl1, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //\//////////////////////////.      \/\/\/      .//////////////////////////////\///
+	if show2																							  //                                                                               //
+		macroNP(_BOXES2, time2, lbl2, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //  2.4) Find line 420 under "CUSTOM MACROS NEW PANE PLOT" title.                //														          
+	if show3																							  //  2.5) Copy it to the following line, remove '//' and replace 'YourMacroName'  //
+		macroNP(_BOXES3, time3, lbl3, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //       with what you used above in step (1.2).                                 //
+	if show4																							  //  2.6) Make sure the beginning of the line is aligned with all the ones above; //
+		macroNP(_BOXES4, time4, lbl4, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       //       To do that press 'Tab' once, or add spaces until they match.            //
+	if show5																							  //                                                                               //
+		macroNP(_BOXES5, time5, lbl5, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       ///\///////////////////////.    LAST STEP BELOW   ./////////////////////////////\//
+	if show6
+		macroNP(_BOXES6, time6, lbl6, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')       
+	if show7
+		macroNP(_BOXES7, time7, lbl7, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto') 	  
+	if show8
+		macroNP(_BOXES8, time8, lbl8, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show9
+		macroNP(_BOXES9, time9, lbl9, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show10
+		macroNP(_BOXES10, time10, lbl10, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show11
+		macroNP(_BOXES11, time11, lbl11, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show12
+		macroNP(_BOXES12, time12, lbl12, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show13
+		macroNP(_BOXES13, time13, lbl13, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show14
+		macroNP(_BOXES14, time14, lbl14, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show15
+		macroNP(_BOXES15, time15, lbl15, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show16
+		macroNP(_BOXES16, time16, lbl16, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show17
+		macroNP(_BOXES17, time17, lbl17, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show18
+		macroNP(_BOXES18, time18, lbl18, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show19
+		macroNP(_BOXES19, time19, lbl19, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show20
+		macroNP(_BOXES20, time20, lbl20, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show21
+		macroNP(_BOXES21, time21, lbl21, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show22
+		macroNP(_BOXES22, time22, lbl22, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show23
+		macroNP(_BOXES23, time23, lbl23, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if show24
+		macroNP(_BOXES24, time24, lbl24, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+	if showPM1
+		macroNP(_BOXESPM1, timePM1, lblPM1, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto')																										 
+
+	// CUSTOM MACROS NEW PANE PLOT
+	// macroNP(_boxesYourMacroName, _timeYourMacroName, _lblYourMacroName, dayofweek(time)==dayofweek.friday and syminfo.type!='crypto', '')
+//#endregion
+
+
+//#region[MEMORY CLEAN UP]
+if show1
+	_LINES1.memoryCleanLine()
+if show2          
+	_LINES2.memoryCleanLine()
+if show3                    		//\//////////////////////////.      \/\/\/      .//////////////////////////////\///        
+	_LINES3.memoryCleanLine()		//                                                                               //        
+if show4                    		//  2.4) Find line 477 under "CUSTOM MACROS LINE CLEAN UP" title.                //
+	_LINES4.memoryCleanLine()		//  2.5) Copy it to the following line, remove '//' and replace 'YourMacroName'  //
+if show5                    		//       with what you used above in step (1.2).                                 //
+	_LINES5.memoryCleanLine()       //                                                                               //
+if show6                     		///\/////////////////////.    YOU ARE DONE! GLGT    .///////////////////////////\//
+	_LINES6.memoryCleanLine()
+if show7                    
+	_LINES7.memoryCleanLine()
+if show8				    
+	_LINES8.memoryCleanLine()
+if show9				    
+	_LINES9.memoryCleanLine()
+if show10
+	_LINES10.memoryCleanLine()
+if show11
+	_LINES11.memoryCleanLine()
+if show12
+	_LINES12.memoryCleanLine()
+if show13
+	_LINES13.memoryCleanLine()
+if show14
+	_LINES14.memoryCleanLine()
+if show15
+	_LINES15.memoryCleanLine()
+if show16
+	_LINES16.memoryCleanLine()
+if show17
+	_LINES17.memoryCleanLine()
+if show18
+	_LINES18.memoryCleanLine()
+if show19
+	_LINES19.memoryCleanLine()
+if show20
+	_LINES20.memoryCleanLine()
+if show21
+	_LINES21.memoryCleanLine()
+if show22
+	_LINES22.memoryCleanLine()
+if show23
+	_LINES23.memoryCleanLine()
+if show24
+	_LINES24.memoryCleanLine()
+if showPM1
+	_LINESPM1.memoryCleanLine()
+
+// CUSTOM MACROS LINE CLEAN UP
+//_lines_YourMacroName.memoryCleanLine()
+
+
+EXT.memoryCleanLine()
+LBL.memoryCleanLabel()
+//#endregion
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// Â© Sonarlab
+
+_tfSettings = "TimeFrame Settings"
+currentTF  = input.bool(true, title = "Liquidity Levels", group=_tfSettings)
+htfBool  = input.bool(true, title = "Higher Timeframe",inline="1", group=_tfSettings)
+htfTF  = enable_all_toggles and enable_auto_htf ? auto_map_tf(timeframe.period) : input.timeframe("", title = "", inline="1",group=_tfSettings, tooltip="Display Liquidity Levels for a Higher Timeframe")
+// --
+_lvlsGrp = "Liquidity Levels"
+leftBars  = input.int(15, title = "Left Bars", group=_lvlsGrp, tooltip="Set the lookback point for what determines a Liquidity Level")
+rightBars  = input.int(5, title = "Right Bars", group=_lvlsGrp, tooltip="Set the number of bars to confirm a Liquidity Level")
+// --
+_removeGrp = "Mitigation Settings"
+removeMitigated  = input.bool(true, title = "Mitigated", inline="1", group=_removeGrp)
+mitiOptions  = input.string("Show", title = "â€‡â€‡â€‡â€‡",  inline="1", options=["Remove", "Show"], group=_removeGrp, tooltip="Show: Liquidity Levels will stop printing when mitigated and remain on the chart.\nRemove: Liquidity Levels will be removed from the chart when mitigated.")
+_candleType  = input.string("Wick", title = "Candle type", options=["Close", "Wick"], group=_removeGrp, tooltip="Choose whether a candle close or a candles high/low is needed to determine a mitigated Liquidity Level")
+// --
+_displayStyleGrp = "Display Styles"
+displayStyle  = input.string("Lines", title = "Display Style", options=["Lines", "Boxes"], group=_displayStyleGrp, tooltip="Choose how Liquidity Levels are displayed on the chart")
+extentionOptions  = input.string("Current", title = "Extention Options", options=["Short", "Current", "Max"], group=_displayStyleGrp, tooltip="Choose how Liquidity Levels are extended on the chart")
+extentionMax = extentionOptions=="Max" ? true : false
+extentionCurrent = extentionOptions=="Current" ? true : false
+displayLimit  = input.int(5, title = "Display Limit", group=_displayStyleGrp, tooltip="")
+// --
+_styleGrp = "Line Styles and Colors"
+_highLineStyle  = input.string("Solid", title = "High Line Style", options=["Solid", "Dashed", "Dotted"], group=_styleGrp)
+highLineStyle = _highLineStyle=="Solid" ? line.style_solid : _highLineStyle=="Dashed" ? line.style_dashed : line.style_dotted
+_lowLineStyle  = input.string("Solid", title = "Low Line Style", options=["Solid", "Dashed", "Dotted"], group=_styleGrp)
+lowLineStyle = _lowLineStyle=="Solid" ? line.style_solid : _lowLineStyle=="Dashed" ? line.style_dashed : line.style_dotted
+lineWidth  = input.int(1, title = "Line Width", group=_styleGrp, tooltip="")
+
+// --
+highLineColor = input.color(#000000, "High Lineâ€‡â€‡â€‡", group = _styleGrp, inline = "1")
+lowLineColor = input.color(#000000, "Low Line", group = _styleGrp, inline = "1")
+highBoxBgColor = input.color(color.new(#000000, 80), "High Box Bgâ€‡", group = _styleGrp, inline = "2")
+highBoxBorderColor = input.color(color.new(#000000, 80), "Box Border", group = _styleGrp, inline = "2")
+lowBoxBgColor = input.color(color.new(#000000, 80), "Low Box Bgâ€‡â€‡", group = _styleGrp, inline = "3")
+lowBoxBorderColor = input.color(color.new(#000000, 80), "Box Border", group = _styleGrp, inline = "3")
+// --
+// --
+_styleGrpHTF = "Line Styles and Colors - Higher TimeFrame"
+_highLineStyleHTF  = input.string("Solid", title = "High Line HTF", options=["Solid", "Dashed", "Dotted"], group=_styleGrpHTF)
+highLineStyleHTF = _highLineStyleHTF=="Solid" ? line.style_solid : _highLineStyleHTF=="Dashed" ? line.style_dashed : line.style_dotted
+_lowLineStyleHTF  = input.string("Solid", title = "Low Line HTF", options=["Solid", "Dashed", "Dotted"], group=_styleGrpHTF)
+lowLineStyleHTF = _lowLineStyleHTF=="Solid" ? line.style_solid : _lowLineStyleHTF=="Dashed" ? line.style_dashed : line.style_dotted
+lineWidthHTF  = input.int(1, title = "Line Width HTF", group=_styleGrpHTF, tooltip="")
+
+// --
+highLineColorHTF = input.color(#000000, "High Lineâ€‡â€‡â€‡", group = _styleGrpHTF, inline = "1")
+lowLineColorHTF = input.color(#000000, "Low Line", group = _styleGrpHTF, inline = "1")
+highBoxBgColorHTF = input.color(color.new(#000000, 80), "High Box Bgâ€‡", group = _styleGrpHTF, inline = "2")
+highBoxBorderColorHTF = input.color(color.new(#000000, 80), "Box Border", group = _styleGrpHTF, inline = "2")
+lowBoxBgColorHTF = input.color(color.new(#000000, 80), "Low Box Bgâ€‡â€‡", group = _styleGrpHTF, inline = "3")
+lowBoxBorderColorHTF = input.color(color.new(#000000, 80), "Box Border", group = _styleGrpHTF, inline = "3")
+
+// --
+// --
+// Alerts
+alertNewHigh = input.bool(true, title = "New High", inline="1", group="Alerts")
+alertNewHighTxt = input.string("Break out!", title="", inline="1", group="Alerts")
+
+alertNewLow  = input.bool(true, title = "New Low", inline="2", group="Alerts")
+alertNewLowTxt = input.string("Break down!", title="", inline="2", group="Alerts")
+
+alertNewHighHTF  = input.bool(true, title = "New HTF High", inline="3", group="Alerts")
+alertNewHighHTFTxt = input.string("Break out!", title="", inline="3", group="Alerts")
+
+alertNewLowHTF  = input.bool(true, title = "New HTF Low", inline="4", group="Alerts")
+alertNewLowHTFTxt = input.string("Break down!", title="", inline="4", group="Alerts")
+
+alertCISDBullish    = input.bool(true, title = "CISD Bullish Break", inline="5", group="Alerts")
+alertCISDBullishTxt = input.string("CISD Bullish Break!", title="", inline="5", group="Alerts")
+alertCISDBearish    = input.bool(true, title = "CISD Bearish Break", inline="6", group="Alerts")
+alertCISDBearishTxt = input.string("CISD Bearish Break!", title="", inline="6", group="Alerts")
+
+// --
+// ----------------------------------------------------
+// Functions 
+// ----------------------------------------------------
+tf_multi(tf) =>
+    ts = timeframe.in_seconds("")
+    htfs = timeframe.in_seconds(tf)
+    htfs/ts
+
+display_limit_line(_array) =>
+    if array.size(_array) > displayLimit/2
+        a = array.shift(_array)
+        line.delete(a)
+
+display_limit_box(_array) =>
+    if array.size(_array) > displayLimit/2
+        a = array.shift(_array)
+        box.delete(a)
+
+remove_mitigated_lines(_array, _hl) =>
+    m = false
+    if array.size(_array) > 0 and removeMitigated        
+        for i = array.size(_array) - 1 to 0 by 1
+            lineObj = array.get(_array, i)
+            hh = _candleType == "Close" ? close[1] : high
+            ll = _candleType == "Close" ? close[1] : low
+            if _hl == "High" and hh > line.get_y1(lineObj)
+                array.remove(_array, i)
+                if mitiOptions == "Show"
+                    line.new(line.get_x1(lineObj),line.get_y1(lineObj),time,line.get_y1(lineObj), xloc=xloc.bar_time, color = color.new(highLineColor, 70))
+                line.delete(lineObj)
+                m := true
+            if _hl == "Low" and ll < line.get_y1(lineObj)
+                array.remove(_array, i)
+                if mitiOptions == "Show"
+                    line.new(line.get_x1(lineObj),line.get_y1(lineObj),time,line.get_y1(lineObj), xloc=xloc.bar_time, color = color.new(lowLineColor, 70))
+                line.delete(lineObj) 
+                m := true  
+    display_limit_line(_array) 
+    m
+
+remove_mitigated_boxes(_array, _hl) =>
+    m = false
+    if array.size(_array) > 0 and removeMitigated
+        for i = array.size(_array) - 1 to 0 by 1
+            boxObj = array.get(_array, i)
+            hh = _candleType == "Close" ? close[1] : high
+            ll = _candleType == "Close" ? close[1] : low
+            if _hl == "High" and hh > box.get_top(boxObj)
+                array.remove(_array, i)
+                if mitiOptions == "Show"
+                    box.new(box.get_left(boxObj),box.get_top(boxObj),time,box.get_bottom(boxObj), xloc=xloc.bar_time, bgcolor = color.new(highBoxBgColor, 90), border_color = color.new(highBoxBorderColor, 90), border_style = highLineStyle)
+                box.delete(boxObj)
+                m := true
+            if _hl == "Low" and ll < box.get_top(boxObj)
+                array.remove(_array, i)
+                if mitiOptions == "Show"
+                    box.new(box.get_left(boxObj),box.get_top(boxObj),time,box.get_bottom(boxObj), xloc=xloc.bar_time, bgcolor = color.new(lowBoxBgColor, 90), border_color = color.new(lowBoxBorderColor, 90), border_style = lowLineStyle)
+                box.delete(boxObj)
+                m := true
+    display_limit_box(_array) 
+    m
+
+extend_line_to_current(lineArray) =>
+    if array.size(lineArray) > 0
+        for i = array.size(lineArray) - 1 to 0 by 1
+            lineObj = array.get(lineArray, i)
+            timeExt = time + ((time[1]-time[2])*20)
+            line.set_x2(lineObj, timeExt)
+
+extend_box_to_current(boxArray) =>
+    if array.size(boxArray) > 0
+        for i = array.size(boxArray) - 1 to 0 by 1
+            boxObj = array.get(boxArray, i)
+            timeExt = time + ((time[1]-time[2])*20)
+            box.set_right(boxObj, timeExt)
+
+// ----------------------------------------------------
+// Current TimeFrame
+// ----------------------------------------------------
+// Varibles 
+// Lines
+var highLineArray = array.new_line()
+var lowLineArray = array.new_line()
+// Boxes
+var highBoxArray = array.new_box()
+var lowBoxArray = array.new_box()
+
+// Pivots
+pivotHigh = ta.pivothigh(leftBars, rightBars)[1]
+pivotLow = ta.pivotlow(leftBars, rightBars)[1]
+
+// Run Calculations
+if currentTF
+    if not na(pivotHigh)
+        if displayStyle == "Lines"
+            array.push(highLineArray, line.new(time[rightBars+1],high[rightBars+1],time[+1],high[rightBars+1],color = highLineColor, style=highLineStyle, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidth))
+        else
+            y1 = math.max(open[rightBars+1], close[rightBars+1])
+            array.push(highBoxArray, box.new(time[rightBars+1],high[rightBars+1],time[+1],y1,bgcolor = highBoxBgColor, border_color=highBoxBorderColor, xloc=xloc.bar_time, border_style = highLineStyle, extend=extentionMax?extend.right:extend.none, border_width = lineWidth))        
+    if not na(pivotLow)
+        if displayStyle == "Lines"
+            array.push(lowLineArray, line.new(time[rightBars+1],low[rightBars+1],time[+1],low[rightBars+1],color = lowLineColor, style=lowLineStyle, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidth))
+        else
+            y1 = math.min(open[rightBars+1], close[rightBars+1])
+            array.push(lowBoxArray, box.new(time[rightBars+1],low[rightBars+1],time[+1],y1,bgcolor = lowBoxBgColor, border_color=lowBoxBorderColor, xloc=xloc.bar_time, border_style = lowLineStyle, extend=extentionMax?extend.right:extend.none, border_width = lineWidth))
+
+// ----------------------------------------------------
+// Run Functions
+// ----------------------------------------------------
+highLineAlert = remove_mitigated_lines(highLineArray, "High")
+lowLineAlert = remove_mitigated_lines(lowLineArray, "Low")
+highBoxAlert = remove_mitigated_boxes(highBoxArray, "High")
+lowBoxAlert = remove_mitigated_boxes(lowBoxArray, "Low")
+
+if extentionCurrent and barstate.islast
+    extend_line_to_current(highLineArray)
+    extend_line_to_current(lowLineArray)
+    extend_box_to_current(highBoxArray)
+    extend_box_to_current(lowBoxArray)
+
+// Alerts
+alertcondition(highLineAlert or highBoxAlert, "New High", "Price is breaking out!")
+alertcondition(lowLineAlert or lowBoxAlert, "New Low", "Price is breaking down!")
+//
+if (highLineAlert or highBoxAlert) and alertNewHigh
+    alert(alertNewHighTxt, alert.freq_once_per_bar)
+
+if (lowLineAlert or lowBoxAlert) and alertNewLow
+    alert(alertNewLowTxt, alert.freq_once_per_bar)
+
+
+// ----------------------------------------------------
+// Higher TimeFrame
+// ----------------------------------------------------
+// Varibles 
+// Lines
+var highLineArrayHTF = array.new_line()
+var lowLineArrayHTF = array.new_line()
+// Boxes
+var highBoxArrayHTF = array.new_box()
+var lowBoxArrayHTF = array.new_box()
+
+// Get HTF
+[_time, _open, _high, _low, _close] = request.security(syminfo.tickerid, htfTF, [time, open, high, low, close])
+
+// Pivots
+pivotHighHTF = ta.pivothigh(_high, leftBars*tf_multi(htfTF), rightBars+tf_multi(htfTF))
+pivotLowHTF = ta.pivotlow(_low, leftBars*tf_multi(htfTF), rightBars+tf_multi(htfTF))
+
+if htfBool
+    timeExt = time+((time[1]-time[2])*10)
+    dis = rightBars+tf_multi(htfTF)
+    if not na(pivotHighHTF)
+        if displayStyle == "Lines"
+            array.push(highLineArrayHTF, line.new(_time[dis],_high[dis],_time[+1],_high[dis],color = highLineColorHTF, style=highLineStyleHTF, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidthHTF))
+        else
+            y1 = math.max(_open[dis], _close[dis])
+            array.push(highBoxArrayHTF, box.new(_time[dis],_high[dis],_time[+1],y1,bgcolor = highBoxBgColorHTF, border_color=highBoxBorderColorHTF, xloc=xloc.bar_time, border_style = highLineStyleHTF, extend=extentionMax?extend.right:extend.none, border_width = lineWidthHTF))  
+    if not na(pivotLowHTF)
+        if displayStyle == "Lines"
+            array.push(lowLineArrayHTF, line.new(_time[dis],_low[dis],_time[+1],_low[dis],color = lowLineColorHTF, style=lowLineStyleHTF, xloc=xloc.bar_time, extend=extentionMax?extend.right:extend.none, width = lineWidthHTF))
+        else
+            y1 = math.min(_open[dis], _close[dis])
+            array.push(lowBoxArrayHTF, box.new(_time[dis],_low[dis],_time[+1],y1,bgcolor = lowBoxBgColorHTF, border_color=lowBoxBorderColorHTF, xloc=xloc.bar_time, border_style = lowLineStyleHTF, extend=extentionMax?extend.right:extend.none, border_width = lineWidthHTF))
+
+// ----------------------------------------------------
+// Run Functions
+// ----------------------------------------------------
+highLineAlertHTF = remove_mitigated_lines(highLineArrayHTF, "High")
+lowLineAlertHTF = remove_mitigated_lines(lowLineArrayHTF, "Low")
+highBoxAlertHTF = remove_mitigated_boxes(highBoxArrayHTF, "High")
+lowBoxAlertHTF = remove_mitigated_boxes(lowBoxArrayHTF, "Low")
+
+if extentionCurrent and barstate.islast
+    extend_line_to_current(highLineArrayHTF)
+    extend_line_to_current(lowLineArrayHTF)
+    extend_box_to_current(highBoxArrayHTF)
+    extend_box_to_current(lowBoxArrayHTF)
+
+// Alerts
+alertcondition(highLineAlertHTF or highBoxAlertHTF, "New HTF High", "Price is breaking out!")
+alertcondition(lowLineAlertHTF or lowBoxAlertHTF, "New HTF Low", "Price is breaking down!")
+//
+if (highLineAlertHTF or highBoxAlertHTF) and alertNewHighHTF
+    alert(alertNewHighHTFTxt, alert.freq_once_per_bar)
+
+if (lowLineAlertHTF or lowBoxAlertHTF) and alertNewLowHTF
+    alert(alertNewLowHTFTxt, alert.freq_once_per_bar)
+
+//@version=6
+//indicator("CISD", "CISD", overlay = true)
+
+//========================
+// Inputs
+//========================
+bullishBreakColor = input.color(color.black, "Bullish", inline = "bup")
+bearishBreakColor = input.color(color.black, "Bearish", inline = "bep")
+
+bullStr = input.string("CISD", " ", tooltip = "Text to be displayed next to the bullish CISD level.", inline = "bup")
+bearStr = input.string("CISD", " ", tooltip = "Text to be displayed next to the bearish CISD level.", inline = "bep")
+
+// Fixed settings (no user inputs)
+cisd_lineWidth     = 1
+cisd_lookAheadBars = 5
+cisd_lineStyle     = line.style_solid
+cisd_keepLevels    = false
+
+//========================
+// Helpers (Body-only)
+//========================
+bodyHigh(offset) =>
+    math.max(open[offset], close[offset])
+
+bodyLow(offset) =>
+    math.min(open[offset], close[offset])
+
+bodySize(offset) =>
+    math.abs(close[offset] - open[offset])
+
+//========================
+// Types
+//========================
+type MarketStructure
+    float topPrice
+    float bottomPrice
+    bool  isBullish
+
+type cisd
+    line level
+    label txt
+    bool completed
+
+//========================
+// Vars
+//========================
+var line cisd_lastTopLine    = na
+var line cisd_lastBottomLine = na
+
+// init market structure with BODY extremes, not wicks
+var MarketStructure cisd_currentStructure = MarketStructure.new(math.max(open, close), math.min(open, close), close >= open)
+
+var cisdLevelsBu = array.new<cisd>()  // bullish CISD levels (below price usually)
+var cisdLevelsBe = array.new<cisd>()  // bearish CISD levels (above price usually)
+
+var bool  cisd_isBullishPullback   = false
+var bool  cisd_isBearishPullback   = false
+
+var float cisd_potentialTopPrice    = na   // taken from opens (body)
+var float cisd_potentialBottomPrice = na   // taken from opens (body)
+
+var int   cisd_bullishBreakIndex   = na
+var int   cisd_bearishBreakIndex   = na
+
+var bool  cisd_currentState        = false  // false = bearish, true = bullish
+
+//========================
+// Pullback Detection (body-based, with size filter)
+//========================
+
+// minimum size of pullback body vs previous body (hardcoded: 50%)
+minPullbackRatio = 0.5
+
+cisd_pullbackBody = bodySize(1)
+cisd_prevBody     = bodySize(2)
+cisd_validPullback = cisd_prevBody > 0 and cisd_pullbackBody >= minPullbackRatio * cisd_prevBody
+
+// green body = bearish pullback, red body = bullish pullback, only if big enough
+cisd_bearishPullbackDetected = cisd_validPullback and close[1] > open[1]
+cisd_bullishPullbackDetected = cisd_validPullback and close[1] < open[1]
+
+// Bearish Pullback Logic
+if cisd_bearishPullbackDetected and not cisd_isBearishPullback
+    cisd_isBearishPullback := true
+    cisd_potentialTopPrice := open[1]       // body-based anchor
+    cisd_bullishBreakIndex := bar_index[1]
+
+// Bullish Pullback Logic
+if cisd_bullishPullbackDetected and not cisd_isBullishPullback
+    cisd_isBullishPullback    := true
+    cisd_potentialBottomPrice := open[1]    // body-based anchor
+    cisd_bearishBreakIndex    := bar_index[1]
+
+// Update Potential Levels During Pullbacks (body only)
+if cisd_isBullishPullback
+    // New lower body â†’ update bottom anchor
+    if open < cisd_potentialBottomPrice
+        cisd_potentialBottomPrice := open
+        cisd_bearishBreakIndex    := bar_index
+    // Red candle with higher open than current bottom â†’ shift anchor to that open
+    if (close < open) and (open > cisd_potentialBottomPrice)
+        cisd_potentialBottomPrice := open
+        cisd_bearishBreakIndex    := bar_index     
+
+if cisd_isBearishPullback
+    // New higher open â†’ update top anchor
+    if open > cisd_potentialTopPrice
+        cisd_potentialTopPrice := open
+        cisd_bullishBreakIndex := bar_index
+    // Green candle with lower open than current top â†’ shift anchor to that open
+    if (close > open) and open < cisd_potentialTopPrice
+        cisd_potentialTopPrice := open
+        cisd_bullishBreakIndex := bar_index      
+
+//========================
+// Structure Updates - Bearish Break (BODY ONLY)
+//========================
+if bodyLow(0) < cisd_currentStructure.bottomPrice
+    cisd_currentStructure.bottomPrice := bodyLow(0)
+    cisd_currentStructure.isBullish   := false
+    
+    if cisd_isBearishPullback and (bar_index - cisd_bullishBreakIndex != 0)
+        idxBack  = bar_index - cisd_bullishBreakIndex
+        idxBack1 = idxBack + 1
+        top1 = bodyHigh(idxBack)
+        top2 = bodyHigh(idxBack1)
+        cisd_currentStructure.topPrice := math.max(top1, top2)
+
+        cisd_isBearishPullback := false
+
+        cisd_bearishLine  = line.new(cisd_bullishBreakIndex, cisd_potentialTopPrice, bar_index + cisd_lookAheadBars, cisd_potentialTopPrice, color = bullishBreakColor, width = cisd_lineWidth, style = cisd_lineStyle)
+        cisd_bearishLabel = label.new(bar_index + cisd_lookAheadBars, cisd_potentialTopPrice, bullStr, color = color.new(color.white, 100), textcolor = bullishBreakColor, style = label.style_label_left, size = size.small)
+        cisd_bstruct = cisd.new(cisd_bearishLine, cisd_bearishLabel, false)
+        array.push(cisdLevelsBe, cisd_bstruct)
+    else if close[1] > open[1] and close < open
+        cisd_currentStructure.topPrice := bodyHigh(1)
+        cisd_isBearishPullback := false
+
+        cisd_bearishLine  = line.new(cisd_bullishBreakIndex, cisd_potentialTopPrice, bar_index + cisd_lookAheadBars, cisd_potentialTopPrice, color = bullishBreakColor, width = cisd_lineWidth, style = cisd_lineStyle)
+        cisd_bearishLabel = label.new(bar_index + cisd_lookAheadBars, cisd_potentialTopPrice, bullStr, color = color.new(color.white, 100), textcolor = bullishBreakColor, style = label.style_label_left, size = size.small)
+        cisd_bstruct = cisd.new(cisd_bearishLine, cisd_bearishLabel, false)
+        array.push(cisdLevelsBe, cisd_bstruct)
+
+//========================
+// Structure Updates - Bullish Break (BODY ONLY)
+//========================
+if bodyHigh(0) > cisd_currentStructure.topPrice
+    cisd_currentStructure.isBullish := true
+    cisd_currentStructure.topPrice  := bodyHigh(0)
+    
+    if cisd_isBullishPullback and (bar_index - cisd_bearishBreakIndex != 0)
+        idxBack  = bar_index - cisd_bearishBreakIndex
+        idxBack1 = idxBack + 1
+        bot1 = bodyLow(idxBack)
+        bot2 = bodyLow(idxBack1)
+        cisd_currentStructure.bottomPrice := math.min(bot1, bot2)
+
+        cisd_isBullishPullback := false
+
+        cisd_bullishLine  = line.new(cisd_bearishBreakIndex, cisd_potentialBottomPrice, bar_index + cisd_lookAheadBars, cisd_potentialBottomPrice, color = bearishBreakColor, width = cisd_lineWidth, style = cisd_lineStyle)
+        cisd_bullishLabel = label.new(bar_index + cisd_lookAheadBars, cisd_potentialBottomPrice, bearStr, color = color.new(color.white, 100), textcolor = bearishBreakColor, style = label.style_label_left, size = size.small)
+        cisd_bu_struct = cisd.new(cisd_bullishLine, cisd_bullishLabel, false)
+        array.push(cisdLevelsBu, cisd_bu_struct)
+    else if close[1] < open[1] and close > open
+        cisd_currentStructure.bottomPrice := bodyLow(1)
+        cisd_isBullishPullback := false
+
+        cisd_bullishLine  = line.new(cisd_bearishBreakIndex, cisd_potentialBottomPrice, bar_index + cisd_lookAheadBars, cisd_potentialBottomPrice, color = bearishBreakColor, width = cisd_lineWidth, style = cisd_lineStyle)
+        cisd_bullishLabel = label.new(bar_index + cisd_lookAheadBars, cisd_potentialBottomPrice, bearStr, color = color.new(color.white, 100), textcolor = bearishBreakColor, style = label.style_label_left, size = size.small)
+        cisd_bu_struct = cisd.new(cisd_bullishLine, cisd_bullishLabel, false)
+        array.push(cisdLevelsBu, cisd_bu_struct)
+
+//========================
+// Level cleanup (keep latest only)
+//========================
+if array.size(cisdLevelsBu) > 1 and not cisd_keepLevels
+    cisd_oldestBu = array.shift(cisdLevelsBu)
+    line.delete(cisd_oldestBu.level)
+    label.delete(cisd_oldestBu.txt)
+
+if array.size(cisdLevelsBe) > 1 and not cisd_keepLevels
+    cisd_oldestBe = array.shift(cisdLevelsBe)
+    line.delete(cisd_oldestBe.level)
+    label.delete(cisd_oldestBe.txt)
+
+//========================
+// CISD Break Flags
+//========================
+cisd_bullish_break = false
+cisd_bearish_break = false
+
+//========================
+// Manage bullish CISD (below price)
+//========================
+if array.size(cisdLevelsBu) >= 1
+    cisd_latestBuIndex = array.size(cisdLevelsBu) - 1
+    cisd_latestBu      = array.get(cisdLevelsBu, cisd_latestBuIndex)
+
+    // As long as body low is not below CISD, extend the line
+    if not (bodyLow(0) < cisd_latestBu.level.get_y2()) and not cisd_latestBu.completed
+        line.set_x2(cisd_latestBu.level, bar_index + cisd_lookAheadBars)
+        label.set_x(cisd_latestBu.txt, bar_index + cisd_lookAheadBars)
+
+    // Break: body low closes below CISD
+    if bodyLow(0) < cisd_latestBu.level.get_y2() and not cisd_latestBu.completed
+        cisd_latestBu.completed := true
+        array.set(cisdLevelsBu, cisd_latestBuIndex, cisd_latestBu)
+
+        // Spawn new bearish CISD from current top anchor
+        cisd_bearishLine  = line.new(cisd_bullishBreakIndex, cisd_potentialTopPrice, bar_index + cisd_lookAheadBars, cisd_potentialTopPrice, color = bullishBreakColor, width = cisd_lineWidth, style = cisd_lineStyle)
+        cisd_bearishLabel = label.new(bar_index + cisd_lookAheadBars, cisd_potentialTopPrice, bullStr, color = color.new(color.white, 100), textcolor = bullishBreakColor, style = label.style_label_left, size = size.small)
+        cisd_bstruct2 = cisd.new(cisd_bearishLine, cisd_bearishLabel, false)
+        array.push(cisdLevelsBe, cisd_bstruct2)
+
+        cisd_currentState := false
+        cisd_bearish_break := true
+
+//========================
+// Manage bearish CISD (above price)
+//========================
+if array.size(cisdLevelsBe) >= 1
+    cisd_latestBeIndex = array.size(cisdLevelsBe) - 1
+    cisd_latestBe      = array.get(cisdLevelsBe, cisd_latestBeIndex)
+
+    // As long as body high is not above CISD, extend the line
+    if not (bodyHigh(0) > cisd_latestBe.level.get_y2()) and not cisd_latestBe.completed
+        line.set_x2(cisd_latestBe.level, bar_index + cisd_lookAheadBars)
+        label.set_x(cisd_latestBe.txt, bar_index + cisd_lookAheadBars)
+
+    // Break: body high closes above CISD
+    if bodyHigh(0) > cisd_latestBe.level.get_y2() and not cisd_latestBe.completed
+        cisd_latestBe.completed := true
+        array.set(cisdLevelsBe, cisd_latestBeIndex, cisd_latestBe)
+
+        // Spawn new bullish CISD from current bottom anchor
+        cisd_bullishLine  = line.new(cisd_bearishBreakIndex, cisd_potentialBottomPrice, bar_index + cisd_lookAheadBars, cisd_potentialBottomPrice, color = bearishBreakColor, width = cisd_lineWidth, style = cisd_lineStyle)
+        cisd_bullishLabel = label.new(bar_index + cisd_lookAheadBars, cisd_potentialBottomPrice, bearStr, color = color.new(color.white, 100), textcolor = bearishBreakColor, style = label.style_label_left, size = size.small)
+        cisd_bu_struct2 = cisd.new(cisd_bullishLine, cisd_bullishLabel, false)
+        array.push(cisdLevelsBu, cisd_bu_struct2)
+
+        cisd_currentState := true
+        cisd_bullish_break := true
+
+// Alerts
+alertcondition(cisd_bearish_break, "CISD Bearish Break", "Price broke below the last bullish CISD level.")
+alertcondition(cisd_bullish_break, "CISD Bullish Break", "Price broke above the last bearish CISD level.")
+
+if cisd_bearish_break and alertCISDBearish
+    alert(alertCISDBearishTxt, alert.freq_once_per_bar)
+
+if cisd_bullish_break and alertCISDBullish
+    alert(alertCISDBullishTxt, alert.freq_once_per_bar)
+
+//---------------------------------------------------------------------
