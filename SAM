@@ -8,7 +8,7 @@
 // Â© Zeiierman
 
 //@version=5
-indicator("Sam", overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500)
+indicator("Sam10", overlay = true,max_bars_back = 500, max_boxes_count = 500, max_lines_count=500, max_labels_count=500,  dynamic_requests = true)
 
 // ~~ Inputs {
 tf       = input.timeframe("D","Timeframe", group="Higher Timeframe Candles")
@@ -25,6 +25,7 @@ mid_col  = input.color(color.rgb(120, 123, 134, 70), title="Mid",inline="range 1
 loc      = input.int(3,"Location", group="Location Settings")
 panel_spacing = input.int(15, "Panel Spacing (horizontal)", minval=2, maxval=40, group="Location Settings")
 loc2 = loc + panel_spacing
+loc3 = loc + panel_spacing * 2
 
 // ~~ Table Inputs {
 showTable      = input.bool(true,title="Show Table", inline="tbl", group="Table")
@@ -46,39 +47,71 @@ enable_htf_countdown = input.bool(true, "HTF Candle Countdown", group=n_extras)
 auto_map_tf(chart_tf) =>
     ts = timeframe.in_seconds(chart_tf)
     switch ts
-        60      => "90"     // 1min → 15min
-        180     => "90"     // 3min → 30min
-        300     => "90"     // 5min → 60min
-        900     => "90"    // 15min → 4hour
-        1800    => "D"      // 30min → daily
-        3600    => "D"      // 60min → daily
-        7200    => "D"      // 2hour → daily
-        10800   => "W"      // 3hour → weekly
-        14400   => "W"      // 4hour → weekly
-        86400   => "1M"     // daily → monthly
-        604800  => "1M"     // weekly → monthly
+        60      => "15"     // 1min → 15min
+        180     => "30"     // 3min → 30min
+        300     => "60"     // 5min → 60min
+        900     => "90"     // 15min → 90min
+        1800    => "90"     // 30min → 90min
+        3600    => "240"    // 60min → 4h
+        14400   => "360"    // 4h → 6h
+        86400   => "W"      // daily → weekly
+        604800  => "M"      // weekly → monthly
         => chart_tf         // default: return as-is
 
 // Auto mapping function for HTF panel 2 based on chart timeframe
 auto_map_tf_p2(chart_tf) =>
     ts = timeframe.in_seconds(chart_tf)
     switch ts
-        60      => "360"     // 1min → 1H
-        180     => "360"    // 3min → 4H
-        300     => "360"      // 5min → 1D
-        900     => "360"    // 15min → 1D
-        1800    => "W"    // 30min → weekly
-        3600    => "W"      // 60min → daily
-        7200    => "W"      // 2hour → daily
-        10800   => "1M"      // 3hour → weekly
-        14400   => "1M"      // 4hour → weekly
-        86400   => "1M"     // daily → monthly
-        604800  => "1M"     // weekly → monthly
+        60      => "90"     // 1min → 90min
+        180     => "90"     // 3min → 90min
+        300     => "90"     // 5min → 90min
+        900     => "240"    // 15min → 4h
+        1800    => "360"    // 30min → 6h
+        3600    => "360"    // 60min → 6h
+        14400   => "D"      // 4h → daily
+        86400   => "M"      // daily → monthly
+        604800  => "M"      // weekly → monthly
         => chart_tf         // default: return as-is
+
+// Auto mapping function for HTF panel 3 based on chart timeframe
+auto_map_tf_p3(chart_tf) =>
+    ts = timeframe.in_seconds(chart_tf)
+    switch ts
+        60      => "360"    // 1min → 6h
+        180     => "360"    // 3min → 6h
+        300     => "360"    // 5min → 6h
+        900     => "D"      // 15min → daily
+        1800    => "D"      // 30min → daily
+        3600    => "D"      // 60min → daily
+        14400   => "W"      // 4h → weekly
+        86400   => "M"      // daily → monthly
+        604800  => "M"      // weekly → monthly
+        => chart_tf         // default: return as-is
+
+// Auto mapping function for separators based on chart timeframe
+auto_map_sep(chart_tf) =>
+    ts = timeframe.in_seconds(chart_tf)
+    if ts <= 60
+        "15"
+    else if ts <= 180
+        "30"
+    else if ts <= 300
+        "60"
+    else if ts <= 900
+        "240"
+    else if ts <= 3600
+        "D"
+    else if ts <= 14400
+        "W"
+    else if ts <= 604800
+        "1M"
+    else
+        chart_tf
 
 // Calculate effective HTF
 htfCandTF = enable_all_toggles and enable_auto_htf ? auto_map_tf(timeframe.period) : tf
 htfCandTF_p2 = enable_all_toggles and enable_auto_htf ? auto_map_tf_p2(timeframe.period) : tf
+htfCandTF_p3 = enable_all_toggles and enable_auto_htf ? auto_map_tf_p3(timeframe.period) : tf
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
@@ -103,12 +136,18 @@ var candle    = HTF.new(array.new<box>(numb),array.new<line>(numb),array.new<lin
 [o,h,l,c]     = request.security(syminfo.tickerid,htfCandTF,[open,high,low,close],lookahead=barmerge.lookahead_on)
 // Auto-mapped HTF series for panel 2
 [o_p2,h_p2,l_p2,c_p2] = request.security(syminfo.tickerid, htfCandTF_p2, [open,high,low,close], lookahead=barmerge.lookahead_on)
+// Auto-mapped HTF series for panel 3
+[o_p3,h_p3,l_p3,c_p3] = request.security(syminfo.tickerid, htfCandTF_p3, [open,high,low,close], lookahead=barmerge.lookahead_on)
 
 // Second HTF candle storage (panel 2)
 var candle2 = HTF.new(array.new<box>(numb), array.new<line>(numb), array.new<line>(numb), array.new<float>(numb*2))
+// Third HTF candle storage (panel 3)
+var candle3 = HTF.new(array.new<box>(numb), array.new<line>(numb), array.new<line>(numb), array.new<float>(numb*2))
 
 // ~~ HTF Countdown Label (positioned above HTF candles)
 var label htfCountLbl = na
+var label htfCountLbl_p2 = na
+var label htfCountLbl_p3 = na
 if enable_all_toggles and enable_htf_countdown and barstate.islast
     tfSecs = timeframe.in_seconds(htfCandTF)
     tfSecs := tfSecs == 0 ? 60 : tfSecs
@@ -120,17 +159,60 @@ if enable_all_toggles and enable_htf_countdown and barstate.islast
     hrsStr = hrs > 0 ? (hrs < 10 ? "0" + str.tostring(hrs) : str.tostring(hrs)) + ":" : ""
     minsStr = mins < 10 ? "0" + str.tostring(mins) : str.tostring(mins)
     secsStr = secs < 10 ? "0" + str.tostring(secs) : str.tostring(secs)
-    txt = "HTF: " + hrsStr + minsStr + ":" + secsStr
+    tfLabel = str.tostring(htfCandTF)
+    txt = "TF1: " + tfLabel + "\n[" + hrsStr + minsStr + ":" + secsStr + "]"
     // Position above HTF candles (using loc for x positioning and candle high for y)
     htfCandleX = b + numb * 4 + loc + numb
     htfCandleY = candle.hl.max() + (syminfo.mintick * 50)
     if na(htfCountLbl)
-        htfCountLbl := label.new(htfCandleX, htfCandleY, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_center, color=color.new(color.white, 100), textcolor=color.blue, size=size.small)
+        htfCountLbl := label.new(htfCandleX, htfCandleY, txt, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_down, color=color.new(color.white, 100), textcolor=color.black, size=size.small, text_font_family=font.family_monospace)
     else
         label.set_xy(htfCountLbl, htfCandleX, htfCandleY)
         label.set_text(htfCountLbl, txt)
         label.set_color(htfCountLbl, color.new(color.white, 100))
-        label.set_textcolor(htfCountLbl, color.blue)
+        label.set_textcolor(htfCountLbl, color.black)
+
+    tfSecs_p2 = timeframe.in_seconds(htfCandTF_p2)
+    tfSecs_p2 := tfSecs_p2 == 0 ? 60 : tfSecs_p2
+    rem_ms_p2 = tfSecs_p2 * 1000 - (time % (tfSecs_p2 * 1000))
+    rem_s_p2 = math.max(0, math.round(rem_ms_p2 / 1000))
+    hrs_p2 = math.floor(rem_s_p2 / 3600)
+    mins_p2 = math.floor((rem_s_p2 % 3600) / 60)
+    secs_p2 = rem_s_p2 % 60
+    hrsStr_p2 = hrs_p2 > 0 ? (hrs_p2 < 10 ? "0" + str.tostring(hrs_p2) : str.tostring(hrs_p2)) + ":" : ""
+    minsStr_p2 = mins_p2 < 10 ? "0" + str.tostring(mins_p2) : str.tostring(mins_p2)
+    secsStr_p2 = secs_p2 < 10 ? "0" + str.tostring(secs_p2) : str.tostring(secs_p2)
+    txt_p2 = "TF2: " + str.tostring(htfCandTF_p2) + "\n[" + hrsStr_p2 + minsStr_p2 + ":" + secsStr_p2 + "]"
+    htfCandleX_p2 = b + numb * 4 + loc2 + numb
+    htfCandleY_p2 = candle2.hl.max() + (syminfo.mintick * 50)
+    if na(htfCountLbl_p2)
+        htfCountLbl_p2 := label.new(htfCandleX_p2, htfCandleY_p2, txt_p2, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_down, color=color.new(color.white, 100), textcolor=color.black, size=size.small, text_font_family=font.family_monospace)
+    else
+        label.set_xy(htfCountLbl_p2, htfCandleX_p2, htfCandleY_p2)
+        label.set_text(htfCountLbl_p2, txt_p2)
+        label.set_color(htfCountLbl_p2, color.new(color.white, 100))
+        label.set_textcolor(htfCountLbl_p2, color.black)
+
+    tfSecs_p3 = timeframe.in_seconds(htfCandTF_p3)
+    tfSecs_p3 := tfSecs_p3 == 0 ? 60 : tfSecs_p3
+    rem_ms_p3 = tfSecs_p3 * 1000 - (time % (tfSecs_p3 * 1000))
+    rem_s_p3 = math.max(0, math.round(rem_ms_p3 / 1000))
+    hrs_p3 = math.floor(rem_s_p3 / 3600)
+    mins_p3 = math.floor((rem_s_p3 % 3600) / 60)
+    secs_p3 = rem_s_p3 % 60
+    hrsStr_p3 = hrs_p3 > 0 ? (hrs_p3 < 10 ? "0" + str.tostring(hrs_p3) : str.tostring(hrs_p3)) + ":" : ""
+    minsStr_p3 = mins_p3 < 10 ? "0" + str.tostring(mins_p3) : str.tostring(mins_p3)
+    secsStr_p3 = secs_p3 < 10 ? "0" + str.tostring(secs_p3) : str.tostring(secs_p3)
+    txt_p3 = "TF3: " + str.tostring(htfCandTF_p3) + "\n[" + hrsStr_p3 + minsStr_p3 + ":" + secsStr_p3 + "]"
+    htfCandleX_p3 = b + numb * 4 + loc3 + numb
+    htfCandleY_p3 = candle3.hl.max() + (syminfo.mintick * 50)
+    if na(htfCountLbl_p3)
+        htfCountLbl_p3 := label.new(htfCandleX_p3, htfCandleY_p3, txt_p3, xloc=xloc.bar_index, yloc=yloc.price, style=label.style_label_down, color=color.new(color.white, 100), textcolor=color.black, size=size.small, text_font_family=font.family_monospace)
+    else
+        label.set_xy(htfCountLbl_p3, htfCandleX_p3, htfCandleY_p3)
+        label.set_text(htfCountLbl_p3, txt_p3)
+        label.set_color(htfCountLbl_p3, color.new(color.white, 100))
+        label.set_textcolor(htfCountLbl_p3, color.black)
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~}
 
@@ -209,6 +291,42 @@ else // Relocate previous & current candles for panel2
             candle2.hl.set(numb*2-1,l_p2)
         d2 += 2
 
+if ta.change(o_p3) //New candle declaration for panel3
+    candle3.candle.shift().delete()
+    candle3.wickH.shift().delete()
+    candle3.wickL.shift().delete()
+    candle3.hl.shift()
+    candle3.hl.shift()
+
+    candle3.candle.push(box.new(b+numb*4+loc3,math.max(o_p3,c_p3),b+numb*4+loc3+2,math.min(o_p3,c_p3),color.black,border_width=1,bgcolor=o_p3>c_p3?dn_col:up_col))
+    candle3.wickH.push(line.new(b+numb*4+loc3+1,math.max(o_p3,c_p3),b+numb*4+loc3+1,h_p3,color=o_p3>c_p3?dn_col:up_col))
+    candle3.wickL.push(line.new(b+numb*4+loc3+1,math.min(o_p3,c_p3),b+numb*4+loc3+1,l_p3,color=o_p3>c_p3?dn_col:up_col))
+    candle3.hl.push(h_p3)
+    candle3.hl.push(l_p3)
+else
+    d3 = loc3
+    for [i,x] in candle3.candle
+        if i<numb-1
+            x.set_left(b+d3*2)
+            x.set_right(b+d3*2+2)
+            candle3.wickH.get(i).set_x1(b+d3*2+1)
+            candle3.wickH.get(i).set_x2(b+d3*2+1)
+            candle3.wickL.get(i).set_x1(b+d3*2+1)
+            candle3.wickL.get(i).set_x2(b+d3*2+1)
+        else
+            x.set_lefttop(b+d3*2,math.max(o_p3,c_p3))
+            x.set_rightbottom(b+d3*2+2,math.min(o_p3,c_p3))
+            x.set_bgcolor(o_p3>c_p3?dn_col:up_col)
+            candle3.wickH.get(i).set_xy1(b+d3*2+1,math.max(o_p3,c_p3))
+            candle3.wickH.get(i).set_xy2(b+d3*2+1,h_p3)
+            candle3.wickH.get(i).set_color(o_p3>c_p3?dn_wick:up_wick)
+            candle3.wickL.get(i).set_xy1(b+d3*2+1,math.min(o_p3,c_p3))
+            candle3.wickL.get(i).set_xy2(b+d3*2+1,l_p3)
+            candle3.wickL.get(i).set_color(o_p3>c_p3?dn_wick:up_wick)
+            candle3.hl.set(numb*2-2,h_p3)
+            candle3.hl.set(numb*2-1,l_p3)
+        d3 += 2
+
 // ~~ Range {
 if Range
     RangeHigh  = line.new(b,candle.hl.max(),b+numb*4+loc+2,candle.hl.max(),color=high_col,extend=extend.none)
@@ -229,7 +347,7 @@ sepWidthInput    = input.int     (1,             "Separator Width", minval = 1)
 sepTimeframeInput = input.timeframe("60", "Separator Timeframe Manual Override", tooltip="When auto-map is enabled, this is overridden by auto mapping function")
 
 // Calculate effective separator timeframe based on auto-HTF mapping
-sepEffective = enable_all_toggles and enable_auto_htf ? auto_map_tf(timeframe.period) : sepTimeframeInput
+sepEffective = enable_all_toggles and enable_auto_htf ? auto_map_sep(timeframe.period) : sepTimeframeInput
 
 // Function to get the line style
 getLineStyle(string input) =>
@@ -279,11 +397,16 @@ bearDivCss = input.color(#000000, 'Swing Low', group = 'Style')
 showDash = input(false, 'Show Dashboard'                                                               , group = 'Dashboard')
 dashLoc  = input.string('Top Right', 'Location', options = ['Top Right', 'Bottom Right', 'Bottom Left'], group = 'Dashboard')
 textSize = input.string('Small', 'Size'        , options = ['Tiny', 'Small', 'Normal']                 , group = 'Dashboard')
+showOpenStatus = input.bool(true, 'Show Open Status', group = 'Dashboard')
+show90mSSMT = input.bool(true, 'Show 90m SSMT Pair Code', group = 'Dashboard')
+showOpenStatusDashboard = input.bool(false, 'Show SBTNC Open Status Dashboard', group = 'Dashboard')
+showOpenLines = input.bool(false, 'Show 6H/90M Open Lines', group = 'Dashboard')
+showSessionsDash = input.bool(true, 'Show Sessions Dashboard', group = 'Dashboard')
 
 //-----------------------------------------------------------------------------}
 //Function
 //-----------------------------------------------------------------------------{
-n = bar_index
+n_stamp = bar_index
 
 get_hl() => [high, low, close]
 
@@ -297,17 +420,17 @@ get_divergence(ph, y2, sym_y2, css)=>
     if y2 != y2[1] and sym_y2 != sym_y2[1] 
         //Test for SMT
         if (y2 - y1) * (sym_y2 - sym_y1) < 0
-            line.new(n[length], y2, x1, y1, color = css)
+            line.new(n_stamp[length], y2, x1, y1, color = css)
 
             smt += 1
         
         sym_y1 := sym_y2
         y1 := y2
-        x1 := n[length]
+        x1 := n_stamp[length]
     else if (ph and y2 > y2[1]) or (not ph and y2 < y2[1]) 
         sym_y1 := na
         y1 := y2
-        x1 := n[length]
+        x1 := n_stamp[length]
     
     smt
 
@@ -359,7 +482,7 @@ if ph != ph[1]
         txt += ticker2
 
         if txt != ''
-            label.new(n[length], ph, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=bullDivCss, size=size.tiny)
+            label.new(n_stamp[length], ph, txt, color=color.new(color.white, 100), style=label.style_label_down, textcolor=bullDivCss, size=size.tiny)
 else
     if pl_smt1 > pl_smt1[1]
         txt += ticker1
@@ -368,7 +491,7 @@ else
         txt += ticker2
 
         if txt != ''
-            label.new(n[length], pl, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=bearDivCss, size=size.tiny)
+            label.new(n_stamp[length], pl, txt, color=color.new(color.white, 100), style=label.style_label_up, textcolor=bearDivCss, size=size.tiny)
     
 //-----------------------------------------------------------------------------}
 //Tables
@@ -381,32 +504,168 @@ var table_size = textSize == 'Tiny' ? size.tiny
   : textSize == 'Small' ? size.small 
   : size.normal
 
-var tb = table.new(table_position, 3, 3
+var tb = table.new(table_position, 7, 3
   , bgcolor = #1e222d
   , border_color = #373a46
   , border_width = 1
   , frame_color = #373a46
   , frame_width = 1)
 
-if barstate.isfirst and showDash
+pairText = ''
+if useSym1
+    pairText := ticker1
+if useSym2
+    pairText := pairText != '' ? pairText + ' | ' + ticker2 : ticker2
+pairText := pairText == '' ? syminfo.ticker : pairText
+
+// SBTNC Open statuses
+tickerId = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
+[_d1t, d1_open]   = request.security(tickerId, "D",   [time, open], lookahead = barmerge.lookahead_on)
+[_w1t, w1_open]   = request.security(tickerId, "W",   [time, open], lookahead = barmerge.lookahead_on)
+[_h6t, h6_open]   = request.security(tickerId, "360", [time, open], lookahead = barmerge.lookahead_on)
+[_m90t, m90_open] = request.security(tickerId, "90",  [time, open], lookahead = barmerge.lookahead_on)
+
+// Fallback if the 6H or 90M open is not available in the current feed.
+h6_open_fallback  = na(h6_open)  ? open : h6_open
+m90_open_fallback = na(m90_open) ? open : m90_open
+
+dailyStatus   = close > d1_open ? 'Above' : close < d1_open ? 'Below' : 'At'
+weeklyStatus  = close > w1_open ? 'Above' : close < w1_open ? 'Below' : 'At'
+h6Status      = close > h6_open_fallback ? 'Above' : close < h6_open_fallback ? 'Below' : 'At'
+m90Status     = close > m90_open_fallback ? 'Above' : close < m90_open_fallback ? 'Below' : 'At'
+
+statusColor(openLevel) =>
+    close > openLevel ? color.lime : close < openLevel ? color.red : color.silver
+
+if barstate.isfirst and (showDash or showOpenStatusDashboard)
+    tb.cell(0, 0, '', text_color = color.white)
+    tb.cell(0, 1, showDash ? ticker1 : syminfo.ticker, text_color = color.white)
+    tb.cell(0, 2, showDash ? ticker2 : '', text_color = color.white)
+
     tb.cell(1, 0, 'Swing High', text_color = color.white)
     tb.cell(2, 0, 'Swing Low', text_color = color.white)
+    tb.cell(3, 0, 'Daily Open', text_color = color.white)
+    tb.cell(4, 0, 'Weekly Open', text_color = color.white)
+    tb.cell(5, 0, '6H Open', text_color = color.white)
+    tb.cell(6, 0, '90M Open', text_color = color.white)
     
-    tb.cell(0, 1, ticker1, text_color = color.white)
-    tb.cell(0, 2, ticker2, text_color = color.white)
+    if showDash
+        tb.cell(0, 1, ticker1, text_color = color.white)
+        tb.cell(0, 2, ticker2, text_color = color.white)
 
-if barstate.islast and showDash
-    //Symbol 1
-    tb.cell(1, 1, str.format('{0} ({1, number, percent})', ph_smt1, ph_smt1 / phN)
-      , text_color = bullDivCss)
-    tb.cell(2, 1, str.format('{0} ({1, number, percent})', pl_smt1, pl_smt1 / plN)
-      , text_color = bearDivCss)
+if barstate.islast and (showDash or showOpenStatusDashboard)
+    if showDash
+        //Symbol 1
+        tb.cell(1, 1, str.format('{0} ({1, number, percent})', ph_smt1, ph_smt1 / phN)
+          , text_color = bullDivCss)
+        tb.cell(2, 1, str.format('{0} ({1, number, percent})', pl_smt1, pl_smt1 / plN)
+          , text_color = bearDivCss)
+        
+        //Symbol 2
+        tb.cell(1, 2, str.format('{0} ({1, number, percent})', ph_smt2, ph_smt2 / phN)
+          , text_color = bullDivCss)
+        tb.cell(2, 2, str.format('{0} ({1, number, percent})', pl_smt2, pl_smt2 / plN)
+          , text_color = bearDivCss)
+
+    if showOpenStatusDashboard
+        tb.cell(3, 1, dailyStatus,  text_color = statusColor(d1_open))
+        tb.cell(4, 1, weeklyStatus, text_color = statusColor(w1_open))
+        tb.cell(5, 1, h6Status,     text_color = statusColor(h6_open))
+        tb.cell(6, 1, m90Status,    text_color = statusColor(m90_open))
+        tb.cell(3, 2, show90mSSMT ? pairText : '', text_color = color.white)
+        tb.cell(4, 2, '', text_color = color.white)
+        tb.cell(5, 2, '', text_color = color.white)
+        tb.cell(6, 2, '', text_color = color.white)
+
+// 6H and 90M open lines removed — set to na always
+plot(na, title = "6H Open Line", editable = false)
+plot(na, title = "90M Open Line", editable = false)
+
+// Get 90M and 6H SSMT data (Smart Money Tape pair correlation)
+show90m6hrSMT = input.bool(true, 'Show 90m/6hr SMT SSMT', group = 'Dashboard')
+
+[_90m_time, _90m_open, _90m_high, _90m_low]   = request.security(tickerId, "90",  [time, open, high, low], lookahead = barmerge.lookahead_on)
+[_6h_time, _6h_open, _6h_high, _6h_low]       = request.security(tickerId, "360", [time, open, high, low], lookahead = barmerge.lookahead_on)
+
+// Determine 90M SSMT status (above/below high/low)
+smt90_status = close > _90m_high ? 'Above' : close < _90m_low ? 'Below' : 'Mid'
+smt6h_status = close > _6h_high ? 'Above' : close < _6h_low ? 'Below' : 'Mid'
+
+smt_status_color(status_val) =>
+    status_val == 'Above' ? color.lime : status_val == 'Below' ? color.red : color.silver
+
+//------------------------------------------------------------------------------
+// © SESSIONS PIPS DASHBOARD (transparent, tiny, single toggle)
+//------------------------------------------------------------------------------
+enableSessionsPips = input.bool(true, 'Show Sessions Pips Dashboard', group = 'Dashboard')
+showSessionsPipsTable = input.bool(true, 'Show Sessions Pips Table', group = 'Dashboard')
+showQuarterlyBreakdown = input.bool(true, 'Show Quarterly Pips Breakdown', group = 'Dashboard')
+
+// Get current timeframe in minutes
+_cur_tf_mins = timeframe.in_seconds() / 60
+
+// Get session data for 90M and 6H ranges
+[_90m_sess_high, _90m_sess_low] = request.security(tickerId, "90", [high, low], lookahead = barmerge.lookahead_on)
+[_6h_sess_high, _6h_sess_low]   = request.security(tickerId, "360", [high, low], lookahead = barmerge.lookahead_on)
+
+// Get quarterly 90M ranges (4 × 90m = 360m = 6h)
+ms90m   = 90 * 60 * 1000
+sessStartMs = time - ((time % ms90m))  // Align to 90m boundary
+quarterIdx = math.floor(((time - sessStartMs) % (4 * ms90m)) / ms90m)
+
+[_q1_h90, _q1_l90] = request.security(tickerId, "90", [high, low], lookahead = barmerge.lookahead_on)
+
+// Calculate pips (in mintick units for display purposes)
+f_calc_pips(float h, float l) =>
+    h > l ? math.round(math.abs(h - l) / syminfo.mintick) : 0
+
+// On lower TF (1m, 3m, 5m): show 90M quarterly range pips
+// On higher TF (15m, 30m): show 6H Q1 Q2 Q3 Q4 range pips
+sess_pips_range = _cur_tf_mins <= 5 ? f_calc_pips(_90m_sess_high, _90m_sess_low) : 
+                  _cur_tf_mins <= 30 ? f_calc_pips(_6h_sess_high, _6h_sess_low) : 
+                  na
+
+// Current quarter context label
+quart_label = _cur_tf_mins <= 5 ? 'Q' + str.tostring(quarterIdx + 1) : 'Q[6H]'
+
+// Create sessions pips dashboard table — transparent bg, tiny text, updated every bar
+var table sessTable = na
+if showSessionsDash and barstate.islast
+    if na(sessTable)
+        sessTable := table.new(position.top_right, 4, 4, 
+                               bgcolor = color.new(color.black, 100),
+                               border_color = color.new(color.gray, 80),
+                               border_width = 0,
+                               frame_color = color.new(color.gray, 100),
+                               frame_width = 0)
+
+    // Header row
+    table.cell(sessTable, 0, 0, 'Sessions',     bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
+    table.cell(sessTable, 1, 0, 'Range Pips',   bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
+    table.cell(sessTable, 2, 0, 'SMT Status',   bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
+    table.cell(sessTable, 3, 0, 'Daily',        bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
     
-    //Symbol 2
-    tb.cell(1, 2, str.format('{0} ({1, number, percent})', ph_smt2, ph_smt2 / phN)
-      , text_color = bullDivCss)
-    tb.cell(2, 2, str.format('{0} ({1, number, percent})', pl_smt2, pl_smt2 / plN)
-      , text_color = bearDivCss)
+    // Current session row
+    table.cell(sessTable, 0, 1, _cur_tf_mins <= 5 ? '90M ' + quart_label : _cur_tf_mins <= 30 ? '6H ' + quart_label : 'HTF', 
+               bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
+    table.cell(sessTable, 1, 1, str.tostring(sess_pips_range) + ' pips', 
+               bgcolor = color.new(color.black, 100), text_color = sess_pips_range > 50 ? color.lime : sess_pips_range > 20 ? color.yellow : color.orange, text_size = size.small)
+    
+    // 90M/6H SSMT status
+    table.cell(sessTable, 2, 1, smt90_status, bgcolor = color.new(color.black, 100), text_color = smt_status_color(smt90_status), text_size = size.small)
+    table.cell(sessTable, 3, 1, dailyStatus,  bgcolor = color.new(color.black, 100), text_color = close > d1_open ? color.lime : color.red, text_size = size.small)
+    
+    // Weekly status row
+    table.cell(sessTable, 0, 2, 'Weekly',       bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
+    table.cell(sessTable, 1, 2, weeklyStatus,   bgcolor = color.new(color.black, 100), text_color = close > w1_open ? color.lime : color.red, text_size = size.small)
+    table.cell(sessTable, 2, 2, smt6h_status,   bgcolor = color.new(color.black, 100), text_color = smt_status_color(smt6h_status), text_size = size.small)
+    table.cell(sessTable, 3, 2, h6Status,       bgcolor = color.new(color.black, 100), text_color = close > h6_open_fallback ? color.lime : color.red, text_size = size.small)
+    
+    // 90M status row
+    table.cell(sessTable, 0, 3, '90M Status',   bgcolor = color.new(color.black, 100), text_color = color.silver, text_size = size.small)
+    table.cell(sessTable, 1, 3, m90Status,      bgcolor = color.new(color.black, 100), text_color = close > m90_open_fallback ? color.lime : color.red, text_size = size.small)
+    table.cell(sessTable, 2, 3, 'Qty: ' + quart_label, bgcolor = color.new(color.black, 100), text_color = color.orange, text_size = size.small)
+    table.cell(sessTable, 3, 3, show90mSSMT ? pairText : '—', bgcolor = color.new(color.black, 100), text_color = color.aqua, text_size = size.small)
 
 // © toodegrees
 //MACROS
@@ -424,7 +683,7 @@ y_top_Line1     = one+syminfo.mintick*5
 
 
 //#region[INPUTS]
-_macroC =  input.color(color.new(#0011ff,0),  title="Macro Color",        inline='main')
+_macroC =  input.color(color.new(#F98181,0),  title="Macro Color",        inline='main')
 _mode   = input.string("On Chart",              title="",                   inline='main', options=["On Chart", "New Pane"], tooltip='When "New Pane" is selected, make sure you move the indicator to a New Pane as well, it is not automatic.')
 
 _showL  =   input.bool(true,                    title="Macro Label?",       inline='sh')
@@ -437,9 +696,9 @@ _bgm    =  input.color(color.new(#4caf50,70), title="Macro Color",     inline='b
 
 //#region[FUNCTIONS]
 time_isMacro(int H_start, int M_start, int H_end, int M_end) =>
-    h = hour(time, "America/New_York")
-    m = minute(time, "America/New_York")
-	h==H_start ? (H_start!=H_end ? m>=M_start : m>=M_start and m<M_end) : (h>H_start ? (h==H_end ? m<M_end : h<H_end) : false)
+    hh = hour(time, "America/New_York")
+    mm = minute(time, "America/New_York")
+    hh==H_start ? (H_start!=H_end ? mm>=M_start : mm>=M_start and mm<M_end) : (hh>H_start ? (hh==H_end ? mm<M_end : hh<H_end) : false)
 
 
 _controlMacroLine(line[] _lines, label[] _lbl, bool _time) =>
@@ -1405,3 +1664,896 @@ if cisd_bullish_break and alertCISDBullish
     alert(alertCISDBullishTxt, alert.freq_once_per_bar)
 
 //---------------------------------------------------------------------
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © sbtnc
+// Created: 2020-01-11
+// Last modified: 2024-12-11
+// version 7.0
+
+// @version=6
+
+
+//--------------------------------------------------------------------
+//#region                      Constants
+//--------------------------------------------------------------------
+
+color   COLOR_1         = color.green
+color   COLOR_2         = color.red
+color   COLOR_3         = color.purple
+color   COLOR_4         = color.orange
+color   COLOR_5         = color.blue
+int     HEAD_PADDING    = -2
+int     HEAD_TRANSP     = 60
+string  LABEL_SIZE      = size.small
+string  LABEL_STYLE     = label.style_none
+string  LINE_STYLE      = line.style_solid
+int     LINE_WIDTH      = 1
+int     OFFSET_PADDING  = 4
+string  TAIL_STYLE      = line.style_dotted
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                         Types 
+//--------------------------------------------------------------------
+
+// @type Contains the open's data.
+type Open 
+    int     barIndex
+    float   price 
+    string  name
+    bool    display
+
+
+// @enum Contains fields with configurable timeframe options as titles.
+enum Timeframes
+    s5  = "5 seconds"
+    s10 = "10 seconds"
+    s15 = "15 seconds"
+    s30 = "30 seconds"
+    m1  = "1 minute"
+    m2  = "2 minutes"
+    m3  = "3 minutes"
+    m5  = "5 minutes"
+    m10 = "10 minutes"
+    m15 = "15 minutes"
+    m30 = "30 minutes"
+    m45 = "45 minutes"
+    h1  = "1 hour"
+    h2  = "2 hours"
+    h3  = "3 hours"
+    h4  = "4 hours"
+    h6  = "6 hours"
+    h8  = "8 hours"
+    h12 = "12 hours"
+    D1  = "1 day"
+    W1  = "1 week"
+    M1  = "1 month"
+    M3  = "3 months"
+    M6  = "6 months"
+    M12 = "12 months"
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                        Inputs
+//--------------------------------------------------------------------
+
+string      group1                      = "Opens"
+string      group2                      = "Style"
+string      group3                      = "Preferences"
+
+string      rightOffsetTooltip          = "Extend the current opens to the right of the last bar."
+string      tailsTooltip                = "Extend the current opens to the left of the chart."
+string      headsTooltip                = "Extend the previous opens to the right."
+string      discoverPricesTooltip       = "On the intraday chart, discover the opens on the chart instead of requesting higher-timeframe data." +
+                                          "\n\nYou can use this setting when price discrepancies exist between the intraday and end-of-day data feeds."
+string      extendedHoursTooltip        = "If the extended trading hours are visible on the intraday chart, display the opens on the pre/post market session."
+
+bool        enableSBTNC                 = input.bool  (true,           title = "Enable All Opens (Master Toggle)", group = group1)
+bool        enableOpenInput1            = input.bool  (true,           title = "",                 group = group1, inline = "#1")
+Timeframes  openTimeframeInput1         = input.enum  (Timeframes.D1,  title = "",                 group = group1, inline = "#1", display = display.none)
+color       openColorInput1             = input.color (COLOR_1,        title = "",                 group = group1, inline = "#1")
+int         openLookbackInput1          = input.int   (1,              title = "",                 group = group1, inline = "#1", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput2            = input.bool  (true,           title = "",                 group = group1, inline = "#2")
+Timeframes  openTimeframeInput2         = input.enum  (Timeframes.W1,  title = "",                 group = group1, inline = "#2", display = display.none)
+color       openColorInput2             = input.color (COLOR_2,        title = "",                 group = group1, inline = "#2")
+int         openLookbackInput2          = input.int   (1,              title = "",                 group = group1, inline = "#2", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput3            = input.bool  (true,           title = "",                 group = group1, inline = "#3")
+Timeframes  openTimeframeInput3         = input.enum  (Timeframes.M1,  title = "",                 group = group1, inline = "#3", display = display.none)
+color       openColorInput3             = input.color (COLOR_3,        title = "",                 group = group1, inline = "#3")
+int         openLookbackInput3          = input.int   (1,              title = "",                 group = group1, inline = "#3", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput4            = input.bool  (false,          title = "",                 group = group1, inline = "#4")
+Timeframes  openTimeframeInput4         = input.enum  (Timeframes.M3,  title = "",                 group = group1, inline = "#4", display = display.none)
+color       openColorInput4             = input.color (COLOR_4,        title = "",                 group = group1, inline = "#4")
+int         openLookbackInput4          = input.int   (1,              title = "",                 group = group1, inline = "#4", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput5            = input.bool  (true,           title = "",                 group = group1, inline = "#5")
+Timeframes  openTimeframeInput5         = input.enum  (Timeframes.M12, title = "",                 group = group1, inline = "#5", display = display.none)
+color       openColorInput5             = input.color (COLOR_5,        title = "",                 group = group1, inline = "#5")
+int         openLookbackInput5          = input.int   (1,              title = "",                 group = group1, inline = "#5", minval = 1, maxval = 500, display = display.none)
+int         rightOffsetInput            = input.int   (20,             title = "Offset",           group = group2, inline = "Offset", tooltip = rightOffsetTooltip, minval = 1, display = display.none)
+bool        enableTailsInput            = input.bool  (false,          title = "Show Tails",       group = group2, tooltip = tailsTooltip)
+bool        enableHeadsInput            = input.bool  (false,          title = "Show Projections", group = group2, tooltip = headsTooltip)
+bool        discoverPricesInput         = input.bool  (false,          title = "Discover Prices",  group = group3, tooltip = discoverPricesTooltip)
+bool        enableExtendedSessionInput  = input.bool  (false,          title = "Extended Hours",   group = group3, tooltip = extendedHoursTooltip)
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                   Functions & methods
+//--------------------------------------------------------------------
+
+// @function Check if the open for the specified `timeframe` can be displayed on the chart context.
+// @returns  simple bool
+method isVisible(simple string timeframe) =>
+    timeframe.in_seconds(timeframe) > timeframe.in_seconds()
+
+
+// @function Detect changes of opens.
+// @returns  series bool
+method change(
+     simple string timeframe,
+     series int    timeframeTime,
+     simple bool   discoverPrice,
+     simple bool   discoverExtendedPrice
+     ) =>
+
+    switch 
+        discoverExtendedPrice => timeframe.change(timeframe)
+        discoverPrice         => ta.change(timeframeTime) > 0 or (barstate.isfirst and time == timeframeTime)
+        =>                       ta.change(timeframeTime) > 0 or barstate.isfirst
+
+
+// @function Request the data in the specified `timeframe` context.
+// @returns  ([int, float]) The open's time and price.
+method request(string timeframe, bool extendedSession) =>
+    if extendedSession
+        tid = ticker.new(syminfo.prefix, syminfo.ticker, session.extended)
+        request.security(tid, timeframe, [time, open], lookahead = barmerge.lookahead_on)
+    else
+        tid = ticker.new(syminfo.prefix, syminfo.ticker, session.regular)
+        request.security(tid, timeframe, [time, open], lookahead = barmerge.lookahead_on)
+
+
+// @function Check if the specified `timeframe` returns end-of-day data.
+// @returns  bool
+method higherTimeframeFeed(simple string timeframe) =>
+    timeframe.in_seconds(timeframe) >= timeframe.in_seconds("D") 
+
+
+// @function Check if the open can be sourced from the chart data.
+// @returns  bool
+discoverPrice(simple string timeframe, simple bool discovery) =>
+    discovery and higherTimeframeFeed(timeframe) and timeframe.isintraday
+
+
+// @function Check if the extended session open can be sourced from the chart.
+// @returns  bool
+discoverExtendedPrice(simple string timeframe, simple bool extendedSession) => 
+    extendedSession and higherTimeframeFeed(timeframe) and syminfo.session == session.extended
+
+
+// @function Check if the open time belongs to the previous bar.
+// @returns  bool
+adjustStartBarIndex(int t) =>
+    time_close[1] > t
+
+
+// @function Calculate the right position of the open level.
+// @returns  (int) The bar index. 
+getRightBarIndex(int padding = 0) =>
+    bar_index + rightOffsetInput + padding * OFFSET_PADDING
+
+
+// @function Produce the `timeframe` parameter from the given user input.
+// @returns  string
+method param(simple Timeframes input) =>
+    switch input
+        Timeframes.s5  => "5S"
+        Timeframes.s10 => "10S"
+        Timeframes.s15 => "15S"
+        Timeframes.s30 => "30S"
+        Timeframes.m1  => "1"
+        Timeframes.m2  => "2"
+        Timeframes.m3  => "3"
+        Timeframes.m5  => "5"
+        Timeframes.m10 => "10"
+        Timeframes.m15 => "15"
+        Timeframes.m30 => "30"
+        Timeframes.m45 => "45"
+        Timeframes.h1  => "60"
+        Timeframes.h2  => "120"
+        Timeframes.h3  => "180"
+        Timeframes.h4  => "240"
+        Timeframes.h6  => "360"
+        Timeframes.h8  => "480"
+        Timeframes.h12 => "720"
+        Timeframes.D1  => "1D"
+        Timeframes.W1  => "1W"
+        Timeframes.M1  => "1M" 
+        Timeframes.M3  => "3M"
+        Timeframes.M6  => "6M"
+        Timeframes.M12 => "12M"
+
+
+// @function Return the short display string for the specified `timeframe` string.
+// @returns  string
+method displayString(string this) =>
+    // Get the readable format.
+    string _str = switch this
+        "1"     => "m"
+        "2"     => "2m"
+        "3"     => "3m"
+        "5"     => "5m"
+        "10"    => "10m"
+        "15"    => "15m"
+        "30"    => "30m"
+        "45"    => "45m"
+        "60"    => "H"
+        "120"   => "2H"
+        "180"   => "3H"
+        "240"   => "4H"
+        "360"   => "6H"
+        "480"   => "8H"
+        "720"   => "12H"
+        "1440"  => "24H"
+        "1D"    => "D"
+        "1W"    => "W"
+        "1M"    => "M"
+        "12M"   => "Y"
+        => this
+
+    // Add spacing.
+    switch str.length(_str)
+        1 => _str + "   "
+        2 => _str + "     "
+        3 => _str + "       "
+
+
+// @function Create and update the open level. An open is composed of a label, a "body" line, and optional "tail" and "head" line extensions.
+// @returns  void
+draw(bool change, Open openData, int lookback, color color, int padding) =>
+    // @variable The reference of the last open line.
+    var line _bodyLine = na
+
+    // @variable The reference of the last open label.
+    var label _label = label.new(
+         x         = na,
+         y         = na,
+         text      = openData.name,
+         style     = LABEL_STYLE,
+         textcolor = color,
+         size      = LABEL_SIZE
+         )
+
+    // @variable The reference of the last open left extending line.
+    var line _tailLine = line.new(
+         x1     = na,
+         y1     = na,
+         x2     = na,
+         y2     = na,
+         color  = color,
+         style  = TAIL_STYLE,
+         width  = LINE_WIDTH,
+         extend = extend.left
+         )
+
+    // @variable The collection of historical open lines.
+    var array<line> _bodyLineArray  = array.new_line()
+
+    // @variable The collection of historical right extending open lines.
+    var array<line> _headLineArray  = array.new_line()
+
+
+    // Update the old open and create the new open.
+
+    if change
+        int _x2 = getRightBarIndex()
+
+        // Anchor the previous open end position.
+        _bodyLine.set_x2(openData.barIndex -1)
+
+        // Create the previous open "head".
+        if enableHeadsInput
+            _headLineArray.push(
+                 line.new(
+                     x1    = openData.barIndex -1,
+                     x2    = openData.barIndex,
+                     y1    = _bodyLine.get_y1(),
+                     y2    = _bodyLine.get_y2(),
+                     color = color.new(color, HEAD_TRANSP),
+                     style = LINE_STYLE,
+                     width = LINE_WIDTH
+                     )
+                 )
+
+            // Trim the exceeding number of drawings.
+            if _headLineArray.size() > lookback -1
+                line.delete(_headLineArray.shift())
+
+        // Update the last open label position and tooltip.
+        _label.set_xy(_x2, openData.price)
+        _label.set_tooltip(str.tostring(openData.price, format.mintick))
+
+        // Create and store the last open line.
+        _bodyLine := line.new(
+             x1    = openData.barIndex,
+             x2    = _x2,
+             y1    = openData.price,
+             y2    = openData.price,
+             color = color,
+             style = LINE_STYLE,
+             width = LINE_WIDTH
+             )
+        array.push(_bodyLineArray, _bodyLine)
+
+        // Trim the exceeding number of drawings.
+        if _bodyLineArray.size() > lookback
+            line.delete(_bodyLineArray.shift())
+
+        // Create the last open "tail".
+        if enableTailsInput
+            _tailLine.set_xy1(openData.barIndex -1, openData.price)
+            _tailLine.set_xy2(openData.barIndex,    openData.price)
+
+
+    // Update the right position of the "body" and "heads" lines.
+
+    if barstate.islast
+        if enableHeadsInput
+            int _x2 = getRightBarIndex(HEAD_PADDING)
+            for _head in _headLineArray
+                _head.set_x2(_x2)
+
+        int _x2 = getRightBarIndex(padding)
+        _bodyLine.set_x2(_x2)
+        _label.set_x(_x2)
+
+
+// @function Get the padding to apply to the open right position for not overlapping the other open labels.
+// @returns  int
+method padding(array<Open> this, int idx, float proximityThreshold) =>
+    int _padding = 0
+
+    // Open #2, #3, #4, and #5 can share the same open with #1.
+    if idx > 0 and this.get(0).display and math.abs(this.get(0).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1
+
+    // Open #3, #4, and #5 can share the same open with #2.
+    if idx > 1 and this.get(1).display and math.abs(this.get(1).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1
+
+    // Open #4 and #5 can share the same open with #3.
+    if idx > 2 and this.get(2).display and math.abs(this.get(2).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1
+
+    // Open #5 can share the same open with #4.
+    if idx > 3 and this.get(3).display and math.abs(this.get(3).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1    
+    
+    _padding
+
+
+// @function Update the open levels.
+// @returns  (bool) Is true if the open changes.
+update(
+     Open           data,
+     simple string  tf,
+     simple bool    extendedSession,
+     simple bool    discoverPrice,
+     simple bool    discoverExtendedPrice
+     ) =>
+
+    // @variable The `open` and `time` requested from the timeframe context.
+    [_tfTime, _tfOpen] = tf.request(extendedSession)
+
+    // @variable Is true when the timeframe changes.
+    bool _change = tf.change(_tfTime, discoverPrice, discoverExtendedPrice)
+
+    // @variable Is true when pinpointing the opening bar index on the previous bar.
+    bool _adjust = adjustStartBarIndex(_tfTime)
+
+    // @variable Is true when sourcing the opening price from the chart context.
+    bool _discovery = discoverPrice or discoverExtendedPrice
+
+    if _change
+        data.price    := _discovery ? open : _tfOpen
+        data.barIndex := _discovery ? bar_index : (_adjust ? bar_index -1 : bar_index)
+        
+    _change
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                 Variables declarations
+//--------------------------------------------------------------------
+
+// @variable The `timeframe` parameters produced from the enum input selections.
+var string timeframe1 = openTimeframeInput1.param()
+var string timeframe2 = openTimeframeInput2.param()
+var string timeframe3 = openTimeframeInput3.param()
+var string timeframe4 = openTimeframeInput4.param()
+var string timeframe5 = openTimeframeInput5.param()
+
+
+// @variable Are true when we can display the opens on the chart.
+var simple bool display1 = enableSBTNC and enableOpenInput1 and timeframe1.isVisible()
+var simple bool display2 = enableSBTNC and enableOpenInput2 and timeframe2.isVisible()
+var simple bool display3 = enableSBTNC and enableOpenInput3 and timeframe3.isVisible()
+var simple bool display4 = enableSBTNC and enableOpenInput4 and timeframe4.isVisible()
+var simple bool display5 = enableSBTNC and enableOpenInput5 and timeframe5.isVisible()
+
+
+// @variable Are true when sourcing the open prices from the chart instead of the requested timeframe context.
+var simple bool discoverPrice1 = discoverPrice(timeframe1, discoverPricesInput)
+var simple bool discoverPrice2 = discoverPrice(timeframe2, discoverPricesInput)
+var simple bool discoverPrice3 = discoverPrice(timeframe3, discoverPricesInput)
+var simple bool discoverPrice4 = discoverPrice(timeframe4, discoverPricesInput)
+var simple bool discoverPrice5 = discoverPrice(timeframe5, discoverPricesInput)
+
+
+// @variable Is true when we should plot the opens on the extended trading hours.
+var simple bool extendedSession = enableExtendedSessionInput and syminfo.session == session.extended
+
+
+// @variable Are true when we should source the open prices from the chart instead of the requested timeframe context.
+var simple bool discoverExtendedPrice1 = discoverExtendedPrice(timeframe1, extendedSession)
+var simple bool discoverExtendedPrice2 = discoverExtendedPrice(timeframe2, extendedSession)
+var simple bool discoverExtendedPrice3 = discoverExtendedPrice(timeframe3, extendedSession)
+var simple bool discoverExtendedPrice4 = discoverExtendedPrice(timeframe4, extendedSession)
+var simple bool discoverExtendedPrice5 = discoverExtendedPrice(timeframe5, extendedSession)
+
+
+// @variable The `Open` UDTs. 
+var Open open1 = Open.new(name = timeframe1.displayString(), display = display1)
+var Open open2 = Open.new(name = timeframe2.displayString(), display = display2)
+var Open open3 = Open.new(name = timeframe3.displayString(), display = display3)
+var Open open4 = Open.new(name = timeframe4.displayString(), display = display4)
+var Open open5 = Open.new(name = timeframe5.displayString(), display = display5)
+
+
+// @variable The collection of last `Open`. 
+var array<Open> openArray = array.from(open1, open2, open3, open4, open5)
+
+
+// @variable The maximum distance to determine if two levels overlap each other.
+float proximityPaddingThreshold = ta.atr(10) /2
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                         Logic
+//--------------------------------------------------------------------
+
+bool change1 = if display1
+    update(open1, timeframe1, extendedSession, discoverPrice1, discoverExtendedPrice1)
+
+
+bool change2 = if display2
+    update(open2, timeframe2, extendedSession, discoverPrice2, discoverExtendedPrice2)
+
+
+bool change3 = if display3
+    update(open3, timeframe3, extendedSession, discoverPrice3, discoverExtendedPrice3)
+
+
+bool change4 = if display4
+    update(open4, timeframe4, extendedSession, discoverPrice4, discoverExtendedPrice4)
+
+
+bool change5 = if display5
+    update(open5, timeframe5, extendedSession, discoverPrice5, discoverExtendedPrice5)
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                        Visuals
+//--------------------------------------------------------------------
+
+//#region - Draw the open levels.
+
+if display5
+    draw(
+         change5,
+         open5,
+         openLookbackInput5,
+         openColorInput5,
+         barstate.islast ? openArray.padding(4, proximityPaddingThreshold) : 0
+         )
+
+
+if display4
+    draw(
+         change4,
+         open4,
+         openLookbackInput4,
+         openColorInput4,
+         barstate.islast ? openArray.padding(3, proximityPaddingThreshold) : 0
+         )
+
+
+if display3
+    draw(
+         change3,
+         open3,
+         openLookbackInput3,
+         openColorInput3,
+         barstate.islast ? openArray.padding(2, proximityPaddingThreshold) : 0
+         )
+
+
+if display2
+    draw(
+         change2,
+         open2,
+         openLookbackInput2,
+         openColorInput2,
+         barstate.islast ? openArray.padding(1, proximityPaddingThreshold) : 0
+         )
+
+
+if display1
+    draw(
+         change1,
+         open1,
+         openLookbackInput1,
+         openColorInput1,
+         0
+         )
+
+//#endregion
+
+
+//#region - Plot the open prices on the `status line`, `price scale`, `data window` as well for providing alert conditions.
+
+displayControls = display.status_line + display.price_scale + display.data_window
+
+plot(
+     series   = open1.price,
+     title    = "#1",
+     color    = openColorInput1,
+     editable = false,
+     display  = enableSBTNC and enableOpenInput1 ? displayControls : display.none
+     )
+
+plot(
+     series   = open2.price,
+     title    = "#2",
+     color    = openColorInput2,
+     editable = false,
+     display  = enableSBTNC and enableOpenInput2 ? displayControls : display.none
+     )
+
+plot(
+     series = open3.price,
+     title    = "#3",
+     color    = openColorInput3,
+     editable = false,
+     display  = enableSBTNC and enableOpenInput3 ? displayControls : display.none
+     )
+
+plot(
+     series   = open4.price,
+     title    = "#4",
+     color    = openColorInput4,
+     editable = false,
+     display  = enableSBTNC and enableOpenInput4 ? displayControls : display.none
+     )
+     
+plot(
+     series   = open5.price,
+     title    = "#5",
+     color    = openColorInput5,
+     editable = false,
+     display  = enableSBTNC and enableOpenInput5 ? displayControls : display.none
+     )
+
+//#endregion
+// © Richard Bvuwayi
+//------------------------------------------------------------------------------
+// 1. MASTER TOGGLES
+//------------------------------------------------------------------------------
+enableRichardFeature = input.bool(true, title="Enable Richard Bvuwayi (Master Toggle)", group="Master Visibility")
+showWeeklyCycle   = input.bool(true, title="Show Weekly Cycle (1H)",     group="Master Visibility")
+showDailyCycle    = input.bool(true, title="Show Daily Cycle (≤30m)",    group="Master Visibility")
+show90mQuarters   = input.bool(true, title="Show 90m Quarters (≤30m)",   group="Master Visibility")
+showMicroSessions = input.bool(true, title="Show Micro Sessions (≤15m)", group="Master Visibility")
+
+//------------------------------------------------------------------------------
+// 2. GLOBAL STYLING
+//------------------------------------------------------------------------------
+q1_txt = input.string("Q1", "Global Q1 Name", group="Global Styling")
+q1_css = input.color(#7c7d80, "Global Q1 Colour", group="Global Styling")
+
+q2_txt = input.string("Q2", "Global Q2 Name", group="Global Styling")
+q2_css = input.color(#f23645, "Global Q2 Colour", group="Global Styling")
+
+q3_txt = input.string("Q3", "Global Q3 Name", group="Global Styling")
+q3_css = input.color(#4caf50, "Global Q3 Colour", group="Global Styling")
+
+q4_txt = input.string("Q4", "Global Q4 Name", group="Global Styling")
+q4_css = input.color(#0e44e5, "Global Q4 Colour", group="Global Styling")
+
+//------------------------------------------------------------------------------
+// 3. TIMEZONE  (matches QT 101 exactly — DST-aware)
+//------------------------------------------------------------------------------
+grp_tz    = "Timezone Settings"
+tz_choice = input.string("New York (UTC-5/-4)", "Timezone Selection",
+     options=["New York (UTC-5/-4)", "UTC-5 (Fixed)", "UTC-4 (Fixed)", "Chart Time"],
+     group=grp_tz,
+     tooltip="New York follows DST automatically. UTC-5 and UTC-4 are fixed offsets. Chart Time uses the symbol exchange timezone.")
+TZ = tz_choice == "UTC-5 (Fixed)"  ? "UTC-5"             :
+     tz_choice == "UTC-4 (Fixed)"  ? "UTC-4"             :
+     tz_choice == "Chart Time"     ? syminfo.timezone     :
+     "America/New_York"
+
+//------------------------------------------------------------------------------
+// 4. SESSION STRINGS  (all times relative to the chosen TZ, matching QT 101)
+//------------------------------------------------------------------------------
+
+// --- Daily Cycle (6h blocks) ---
+sesq_ses = "1800-0000", sesr_ses = "0000-0600"
+sess_ses = "0600-1200", sest_ses = "1200-1800"
+
+// --- 90m Quarters ---
+sesa_ses = "1800-1930", sesb_ses = "1930-2100", sesc_ses = "2100-2230", sesd_ses = "2230-0000"
+sese_ses = "0000-0130", sesf_ses = "0130-0300", sesg_ses = "0300-0430", sesh_ses = "0430-0600"
+sesi_ses = "0600-0730", sesj_ses = "0730-0900", sesk_ses = "0900-1030", sesl_ses = "1030-1200"
+sesm_ses = "1200-1330", sesn_ses = "1330-1500", seso_ses = "1500-1630", sesp_ses = "1630-1800"
+
+// --- Micro Sessions (22.5m) ---
+sesu_ses = "0600-0622", sesv_ses = "0622-0645", sesw_ses = "0645-0707", sesx_ses = "0707-0730"
+sesy_ses = "0730-0752", sesz_ses = "0752-0815", sesaa_ses = "0815-0837", sesab_ses = "0837-0900"
+sesac_ses = "0900-0922", sesad_ses = "0922-0945", sesae_ses = "0945-1007", sesaf_ses = "1007-1030"
+sesag_ses = "1030-1052", sesah_ses = "1052-1115", sesai_ses = "1115-1137", sesaj_ses = "1137-1200"
+sesak_ses = "1200-1222", sesal_ses = "1222-1245", sesam_ses = "1245-1307", sesan_ses = "1307-1330"
+sesao_ses = "1330-1352", sesap_ses = "1352-1415", sesaq_ses = "1415-1437", sesar_ses = "1437-1500"
+sesas_ses = "1500-1522", sesat_ses = "1522-1545", sesau_ses = "1545-1607", sesav_ses = "1607-1630"
+sesaw_ses = "1630-1652", sesax_ses = "1652-1715", sesay_ses = "1715-1737", sesaz_ses = "1737-1800"
+sesba_ses = "0000-0022", sesbb_ses = "0022-0045", sesbc_ses = "0045-0107", sesbd_ses = "0107-0130"
+sesbe_ses = "0130-0152", sesbf_ses = "0152-0215", sesbg_ses = "0215-0237", sesbh_ses = "0237-0300"
+sesbi_ses = "0300-0322", sesbj_ses = "0322-0345", sesbk_ses = "0345-0407", sesbl_ses = "0407-0430"
+sesbm_ses = "0430-0452", sesbn_ses = "0452-0515", sesbo_ses = "0515-0537", sesbp_ses = "0537-0600"
+
+//------------------------------------------------------------------------------
+// 5. VISUAL SETTINGS
+//------------------------------------------------------------------------------
+bg_transp    = input.float(90, 'Range Area Transparency', group = 'Ranges Settings')
+show_outline = input(false,     'Range Outline',           group = 'Ranges Settings')
+show_txt     = input(false,     'Range Label',             group = 'Ranges Settings')
+
+//------------------------------------------------------------------------------
+// 6. STAMP INPUTS
+//------------------------------------------------------------------------------
+grp_stamp    = "Stamp"
+showTitle    = input.bool(true,           "Show Title",    group=grp_stamp)
+showSubtitle = input.bool(true,           "Show Subtitle", group=grp_stamp)
+titleStr     = input.string("𝚁𝙸𝙲𝙷 𝙱𝚅𝚆𝚈",  "Title Text",    group=grp_stamp)
+subtitleStr  = input.string("ᵣᵢCₕ BᵥWY", "Subtitle Text", group=grp_stamp)
+
+grp_sym      = "Symbol Info"
+showTicker    = input.bool(true, "Show Ticker",    group=grp_sym)
+showTimeframe = input.bool(true, "Show Timeframe", group=grp_sym)
+showDate      = input.bool(true, "Show Date",      group=grp_sym)
+
+grp_spos     = "Stamp Position"
+vPos         = input.string("bottom", "Vertical Position",   options=["top","middle","bottom"], group=grp_spos)
+hPos         = input.string("right",  "Horizontal Position", options=["left","center","right"],  group=grp_spos)
+
+grp_ssz      = "Stamp Size"
+tableWidth   = input.int(0, "Width",  minval=0, maxval=100, group=grp_ssz)
+tableHeight  = input.int(0, "Height", minval=0, maxval=100, group=grp_ssz)
+
+grp_sst      = "Stamp Style"
+c_title      = input.color(color.black,                "Title Color",    group=grp_sst)
+s_title      = input.string("small", "Title Size",    options=["tiny","small","normal","large","huge","auto"], group=grp_sst)
+c_subtitle   = input.color(color.new(color.black, 30), "Subtitle Color", group=grp_sst)
+s_subtitle   = input.string("small", "Subtitle Size", options=["tiny","small","normal","large","huge","auto"], group=grp_sst)
+c_symbol     = input.color(color.new(color.black, 30), "Symbol Color",   group=grp_sst)
+s_symbol     = input.string("small", "Symbol Size",   options=["tiny","small","normal","large","huge","auto"], group=grp_sst)
+
+//------------------------------------------------------------------------------
+// 7. FUNCTIONS
+//------------------------------------------------------------------------------
+bx_stamp = bar_index
+
+get_range(is_active, session_name, session_css) =>
+    var int   t   = 0
+    var float max = high
+    var float min = low
+    var box   bx  = na
+    var label lbl = na
+
+    bool is_start = is_active != 0 and is_active != is_active[1]
+
+    if is_start
+        t   := time
+        max := high
+        min := low
+        bx  := box.new(bx_stamp, max, bx_stamp, min,
+                 bgcolor      = color.new(session_css, bg_transp),
+                 border_color = show_outline ? session_css : na,
+                 border_style = line.style_dotted)
+        if show_txt
+            lbl := label.new(t, max, session_name,
+                     xloc      = xloc.bar_time,
+                     textcolor = session_css,
+                     style     = label.style_label_down,
+                     color     = color.new(color.white, 100),
+                     size      = size.tiny)
+
+    if is_active != 0
+        max := math.max(high, max)
+        min := math.min(low,  min)
+        box.set_top(bx, max)
+        box.set_rightbottom(bx, bx_stamp, min)
+        if show_txt
+            label.set_xy(lbl, int(math.avg(t, time)), max)
+
+get_range_outline(is_active, session_name) =>
+    var int   t   = 0
+    var float max = high
+    var float min = low
+    var box   bx  = na
+    var label lbl = na
+
+    bool is_start = is_active != 0 and is_active != is_active[1]
+
+    if is_start
+        t   := time
+        max := high
+        min := low
+        bx  := box.new(bx_stamp, max, bx_stamp, min,
+                 bgcolor      = color.new(color.gray, 100),
+                 border_color = color.gray,
+                 border_style = line.style_dotted)
+        if show_txt
+            lbl := label.new(t, max, session_name,
+                     xloc      = xloc.bar_time,
+                     textcolor = color.gray,
+                     style     = label.style_label_down,
+                     color     = color.new(color.white, 100),
+                     size      = size.tiny)
+
+    if is_active != 0
+        max := math.max(high, max)
+        min := math.min(low,  min)
+        box.set_top(bx, max)
+        box.set_rightbottom(bx, bx_stamp, min)
+        if show_txt
+            label.set_xy(lbl, int(math.avg(t, time)), max)
+
+//------------------------------------------------------------------------------
+// 8. DETECTION LOGIC  — all session lookups now use the DST-aware TZ string
+//------------------------------------------------------------------------------
+tf_period = timeframe.period
+
+// Daily Cycle (6h)
+is_sesq = math.sign(nz(time(tf_period, sesq_ses, TZ))), is_sesr = math.sign(nz(time(tf_period, sesr_ses, TZ)))
+is_sess = math.sign(nz(time(tf_period, sess_ses, TZ))), is_sest = math.sign(nz(time(tf_period, sest_ses, TZ)))
+
+// 90m Quarters
+is_sesa = math.sign(nz(time(tf_period, sesa_ses, TZ))), is_sesb = math.sign(nz(time(tf_period, sesb_ses, TZ)))
+is_sesc = math.sign(nz(time(tf_period, sesc_ses, TZ))), is_sesd = math.sign(nz(time(tf_period, sesd_ses, TZ)))
+is_sese = math.sign(nz(time(tf_period, sese_ses, TZ))), is_sesf = math.sign(nz(time(tf_period, sesf_ses, TZ)))
+is_sesg = math.sign(nz(time(tf_period, sesg_ses, TZ))), is_sesh = math.sign(nz(time(tf_period, sesh_ses, TZ)))
+is_sesi = math.sign(nz(time(tf_period, sesi_ses, TZ))), is_sesj = math.sign(nz(time(tf_period, sesj_ses, TZ)))
+is_sesk = math.sign(nz(time(tf_period, sesk_ses, TZ))), is_sesl = math.sign(nz(time(tf_period, sesl_ses, TZ)))
+is_sesm = math.sign(nz(time(tf_period, sesm_ses, TZ))), is_sesn = math.sign(nz(time(tf_period, sesn_ses, TZ)))
+is_seso = math.sign(nz(time(tf_period, seso_ses, TZ))), is_sesp = math.sign(nz(time(tf_period, sesp_ses, TZ)))
+
+// Micro Sessions
+is_sesu = math.sign(nz(time(tf_period, sesu_ses, TZ))), is_sesv = math.sign(nz(time(tf_period, sesv_ses, TZ)))
+is_sesw = math.sign(nz(time(tf_period, sesw_ses, TZ))), is_sesx = math.sign(nz(time(tf_period, sesx_ses, TZ)))
+is_sesy = math.sign(nz(time(tf_period, sesy_ses, TZ))), is_sesz = math.sign(nz(time(tf_period, sesz_ses, TZ)))
+is_sesaa = math.sign(nz(time(tf_period, sesaa_ses, TZ))), is_sesab = math.sign(nz(time(tf_period, sesab_ses, TZ)))
+is_sesac = math.sign(nz(time(tf_period, sesac_ses, TZ))), is_sesad = math.sign(nz(time(tf_period, sesad_ses, TZ)))
+is_sesae = math.sign(nz(time(tf_period, sesae_ses, TZ))), is_sesaf = math.sign(nz(time(tf_period, sesaf_ses, TZ)))
+is_sesag = math.sign(nz(time(tf_period, sesag_ses, TZ))), is_sesah = math.sign(nz(time(tf_period, sesah_ses, TZ)))
+is_sesai = math.sign(nz(time(tf_period, sesai_ses, TZ))), is_sesaj = math.sign(nz(time(tf_period, sesaj_ses, TZ)))
+is_sesak = math.sign(nz(time(tf_period, sesak_ses, TZ))), is_sesal = math.sign(nz(time(tf_period, sesal_ses, TZ)))
+is_sesam = math.sign(nz(time(tf_period, sesam_ses, TZ))), is_sesan = math.sign(nz(time(tf_period, sesan_ses, TZ)))
+is_sesao = math.sign(nz(time(tf_period, sesao_ses, TZ))), is_sesap = math.sign(nz(time(tf_period, sesap_ses, TZ)))
+is_sesaq = math.sign(nz(time(tf_period, sesaq_ses, TZ))), is_sesar = math.sign(nz(time(tf_period, sesar_ses, TZ)))
+is_sesas = math.sign(nz(time(tf_period, sesas_ses, TZ))), is_sesat = math.sign(nz(time(tf_period, sesat_ses, TZ)))
+is_sesau = math.sign(nz(time(tf_period, sesau_ses, TZ))), is_sesav = math.sign(nz(time(tf_period, sesav_ses, TZ)))
+is_sesaw = math.sign(nz(time(tf_period, sesaw_ses, TZ))), is_sesax = math.sign(nz(time(tf_period, sesax_ses, TZ)))
+is_sesay = math.sign(nz(time(tf_period, sesay_ses, TZ))), is_sesaz = math.sign(nz(time(tf_period, sesaz_ses, TZ)))
+is_sesba = math.sign(nz(time(tf_period, sesba_ses, TZ))), is_sesbb = math.sign(nz(time(tf_period, sesbb_ses, TZ)))
+is_sesbc = math.sign(nz(time(tf_period, sesbc_ses, TZ))), is_sesbd = math.sign(nz(time(tf_period, sesbd_ses, TZ)))
+is_sesbe = math.sign(nz(time(tf_period, sesbe_ses, TZ))), is_sesbf = math.sign(nz(time(tf_period, sesbf_ses, TZ)))
+is_sesbg = math.sign(nz(time(tf_period, sesbg_ses, TZ))), is_sesbh = math.sign(nz(time(tf_period, sesbh_ses, TZ)))
+is_sesbi = math.sign(nz(time(tf_period, sesbi_ses, TZ))), is_sesbj = math.sign(nz(time(tf_period, sesbj_ses, TZ)))
+is_sesbk = math.sign(nz(time(tf_period, sesbk_ses, TZ))), is_sesbl = math.sign(nz(time(tf_period, sesbl_ses, TZ)))
+is_sesbm = math.sign(nz(time(tf_period, sesbm_ses, TZ))), is_sesbn = math.sign(nz(time(tf_period, sesbn_ses, TZ)))
+is_sesbo = math.sign(nz(time(tf_period, sesbo_ses, TZ))), is_sesbp = math.sign(nz(time(tf_period, sesbp_ses, TZ)))
+
+// Weekly Cycle — day/hour detection uses the same TZ
+_dow  = dayofweek(time, TZ)
+_hour = hour(time,      TZ)
+
+_inDQ1 = (_dow == dayofweek.sunday    and _hour >= 18) or (_dow == dayofweek.monday    and _hour < 18)
+_inDQ2 = (_dow == dayofweek.monday    and _hour >= 18) or (_dow == dayofweek.tuesday   and _hour < 18)
+_inDQ3 = (_dow == dayofweek.tuesday   and _hour >= 18) or (_dow == dayofweek.wednesday and _hour < 18)
+_inDQ4 = (_dow == dayofweek.wednesday and _hour >= 18) or (_dow == dayofweek.thursday  and _hour < 18)
+_inDQ5 = (_dow == dayofweek.thursday  and _hour >= 18) or (_dow == dayofweek.friday    and _hour < 18)
+
+is_dq1 = _inDQ1 ? 1 : 0
+is_dq2 = _inDQ2 ? 1 : 0
+is_dq3 = _inDQ3 ? 1 : 0
+is_dq4 = _inDQ4 ? 1 : 0
+is_dq5 = _inDQ5 ? 1 : 0
+
+//------------------------------------------------------------------------------
+// 9. OVERLAYS — timeframe gating
+//------------------------------------------------------------------------------
+_tf_mins = timeframe.in_seconds() / 60
+
+// Weekly Cycle — exactly 1H only
+if enableRichardFeature and showWeeklyCycle and _tf_mins == 60
+    get_range(is_dq1, q1_txt, q1_css)
+    get_range(is_dq2, q2_txt, q2_css)
+    get_range(is_dq3, q3_txt, q3_css)
+    get_range(is_dq4, q4_txt, q4_css)
+    get_range_outline(is_dq5, "Fri")
+
+// Daily Cycle (6h) — 30m and below
+if enableRichardFeature and showDailyCycle and _tf_mins <= 30
+    get_range(is_sesq, q1_txt, q1_css), get_range(is_sesr, q2_txt, q2_css)
+    get_range(is_sess, q3_txt, q3_css), get_range(is_sest, q4_txt, q4_css)
+
+// 90m Quarters — 30m and below
+if enableRichardFeature and show90mQuarters and _tf_mins <= 30
+    get_range(is_sesa, q1_txt, q1_css), get_range(is_sesb, q2_txt, q2_css)
+    get_range(is_sesc, q3_txt, q3_css), get_range(is_sesd, q4_txt, q4_css)
+    get_range(is_sese, q1_txt, q1_css), get_range(is_sesf, q2_txt, q2_css)
+    get_range(is_sesg, q3_txt, q3_css), get_range(is_sesh, q4_txt, q4_css)
+    get_range(is_sesi, q1_txt, q1_css), get_range(is_sesj, q2_txt, q2_css)
+    get_range(is_sesk, q3_txt, q3_css), get_range(is_sesl, q4_txt, q4_css)
+    get_range(is_sesm, q1_txt, q1_css), get_range(is_sesn, q2_txt, q2_css)
+    get_range(is_seso, q3_txt, q3_css), get_range(is_sesp, q4_txt, q4_css)
+
+// Micro Sessions — 5m and below
+if enableRichardFeature and showMicroSessions and _tf_mins <= 5
+    get_range(is_sesu, q1_txt, q1_css), get_range(is_sesv, q2_txt, q2_css), get_range(is_sesw, q3_txt, q3_css), get_range(is_sesx, q4_txt, q4_css)
+    get_range(is_sesy, q1_txt, q1_css), get_range(is_sesz, q2_txt, q2_css), get_range(is_sesaa, q3_txt, q3_css), get_range(is_sesab, q4_txt, q4_css)
+    get_range(is_sesac, q1_txt, q1_css), get_range(is_sesad, q2_txt, q2_css), get_range(is_sesae, q3_txt, q3_css), get_range(is_sesaf, q4_txt, q4_css)
+    get_range(is_sesag, q1_txt, q1_css), get_range(is_sesah, q2_txt, q2_css), get_range(is_sesai, q3_txt, q3_css), get_range(is_sesaj, q4_txt, q4_css)
+    get_range(is_sesak, q1_txt, q1_css), get_range(is_sesal, q2_txt, q2_css), get_range(is_sesam, q3_txt, q3_css), get_range(is_sesan, q4_txt, q4_css)
+    get_range(is_sesao, q1_txt, q1_css), get_range(is_sesap, q2_txt, q2_css), get_range(is_sesaq, q3_txt, q3_css), get_range(is_sesar, q4_txt, q4_css)
+    get_range(is_sesas, q1_txt, q1_css), get_range(is_sesat, q2_txt, q2_css), get_range(is_sesau, q3_txt, q3_css), get_range(is_sesav, q4_txt, q4_css)
+    get_range(is_sesaw, q1_txt, q1_css), get_range(is_sesax, q2_txt, q2_css), get_range(is_sesay, q3_txt, q3_css), get_range(is_sesaz, q4_txt, q4_css)
+    get_range(is_sesba, q1_txt, q1_css), get_range(is_sesbb, q2_txt, q2_css), get_range(is_sesbc, q3_txt, q3_css), get_range(is_sesbd, q4_txt, q4_css)
+    get_range(is_sesbe, q1_txt, q1_css), get_range(is_sesbf, q2_txt, q2_css), get_range(is_sesbg, q3_txt, q3_css), get_range(is_sesbh, q4_txt, q4_css)
+    get_range(is_sesbi, q1_txt, q1_css), get_range(is_sesbj, q2_txt, q2_css), get_range(is_sesbk, q3_txt, q3_css), get_range(is_sesbl, q4_txt, q4_css)
+    get_range(is_sesbm, q1_txt, q1_css), get_range(is_sesbn, q2_txt, q2_css), get_range(is_sesbo, q3_txt, q3_css), get_range(is_sesbp, q4_txt, q4_css)
+
+//------------------------------------------------------------------------------
+// 10. BVWY STAMP
+//------------------------------------------------------------------------------
+tickerInfo    = syminfo.ticker
+timeframeInfo = timeframe.period + (timeframe.isminutes ? "M" : "")
+dateInfo      = str.tostring(dayofmonth(time_close)) + "/" + str.tostring(month(time_close)) + "/" + str.tostring(year(time_close))
+
+symBlock = ""
+if showTicker
+    symBlock := symBlock + tickerInfo
+if showTimeframe
+    symBlock := symBlock + (str.length(symBlock) > 0 ? " | " : "") + timeframeInfo
+if showDate
+    symBlock := symBlock + (str.length(symBlock) > 0 ? " | " : "") + dateInfo
+
+var table stampTable = table.new(vPos + "_" + hPos, 1, 3)
+if barstate.islast and enableRichardFeature
+    if showTitle
+        table.cell(stampTable, 0, 0, titleStr,    tableWidth, tableHeight, c_title,    text_size=s_title)
+    if showSubtitle
+        table.cell(stampTable, 0, 1, subtitleStr, tableWidth, tableHeight, c_subtitle, text_size=s_subtitle)
+    if str.length(symBlock) > 0
+        table.cell(stampTable, 0, 2, symBlock,    tableWidth, tableHeight, c_symbol,   text_size=s_symbol)

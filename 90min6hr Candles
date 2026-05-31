@@ -1,0 +1,825 @@
+//@version=6
+indicator('Custom HTF Candles + PSP - 90M/6H/7H', shorttitle="TF: 90/6/7 + PSP", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+
+type TFColors
+    color bull_body
+    color bear_body
+    color bull_border
+    color bear_border
+    color bull_wick
+    color bear_wick
+
+string g_layout = "Layout  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_offset  = input.int(10, 'Padding from last candle', minval=1, maxval=50, group=g_layout)
+i_buffer  = input.int(1,  'Space between candles',    minval=1, maxval=4,  group=g_layout)
+i_htfgap  = input.int(5,  'Gap between timeframes',   minval=1, maxval=20, group=g_layout)
+i_width   = input.int(2,  'Candle width',             minval=1, maxval=6,  group=g_layout) * 2
+i_maxshow = input.int(4,  'Candles to show (each TF)',minval=1, maxval=5,  group=g_layout)
+
+string g_tf = "Timeframes  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_show_90m = input.bool(true, 'Show 90 Min candles', group=g_tf)
+i_show_6h  = input.bool(true, 'Show 6 Hour candles',  group=g_tf)
+i_show_7h  = input.bool(true, 'Show 7 Hour candles',  group=g_tf)
+
+string g_psp = "PSP Settings ↔️ ━━━━━━━━━━━━━━━━━━━━━"
+i_psp_show      = input.bool(true, "Enable PSP Correlation Engine", group=g_psp)
+i_psp_mode      = input.string("Auto (Ronin)", "Correlation Mode", options=["Auto (Ronin)", "Manual"], group=g_psp)
+i_psp_left      = input.int(1, "Pivot Left Bars", minval=1, group=g_psp)
+i_psp_right     = input.int(1, "Pivot Right Bars", minval=1, group=g_psp)
+i_psp_bull_col  = input.color(color.new(#ffa726,60), "Bullish PSP Color (Sweep Low)", group=g_psp)
+i_psp_bear_col  = input.color(color.new(#ffa726,60), "Bearish PSP Color (Sweep High)", group=g_psp)
+i_psp_t2        = input.symbol("", "Manual Pair 2", group=g_psp)
+i_psp_t3        = input.symbol("TVC:DXY", "Manual Pair 3", group=g_psp)
+i_psp_inv3      = input.bool(true, "Invert Pair 3? (e.g. DXY)", group=g_psp)
+
+string g_trace = "Trace Lines ──── ━━━━━━━━━━━━━━━━━━━━━"
+i_trace_tf    = input.string("All", "Apply Trace To", options=["All", "90M", "6H", "7H", "None"], group=g_trace)
+i_trace_o     = input.bool(true, "Show Open", inline="to", group=g_trace)
+i_trace_o_col = input.color(color.new(color.gray, 50), "", inline="to", group=g_trace)
+i_trace_o_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="to", group=g_trace)
+
+i_trace_c     = input.bool(false, "Show Close", inline="tc", group=g_trace)
+i_trace_c_col = input.color(color.new(color.gray, 50), "", inline="tc", group=g_trace)
+i_trace_c_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="tc", group=g_trace)
+
+i_trace_h     = input.bool(false, "Show High", inline="th", group=g_trace)
+i_trace_h_col = input.color(color.new(color.gray, 50), "", inline="th", group=g_trace)
+i_trace_h_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="th", group=g_trace)
+
+i_trace_l     = input.bool(false, "Show Low", inline="tl", group=g_trace)
+i_trace_l_col = input.color(color.new(color.gray, 50), "", inline="tl", group=g_trace)
+i_trace_l_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="tl", group=g_trace)
+
+string g_90m = "90 Min Colors  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_90m_bull_body   = input.color(color.new(#dbdbdb, 10), 'Bull Body  ', inline='90m_body',   group=g_90m)
+i_90m_bear_body   = input.color(color.new(#000000, 10), 'Bear Body',   inline='90m_body',   group=g_90m)
+i_90m_bull_border = input.color(color.new(#000000, 10), 'Bull Border', inline='90m_border', group=g_90m)
+i_90m_bear_border = input.color(color.new(#000000, 10), 'Bear Border', inline='90m_border', group=g_90m)
+i_90m_bull_wick   = input.color(color.new(#000000, 10), 'Bull Wick  ', inline='90m_wick',   group=g_90m)
+i_90m_bear_wick   = input.color(color.new(#000000, 10), 'Bear Wick',   inline='90m_wick',   group=g_90m)
+
+string g_6h = "6 Hour Colors  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_6h_bull_body   = input.color(color.new(#dbdbdb, 10), 'Bull Body  ', inline='6h_body',   group=g_6h)
+i_6h_bear_body   = input.color(color.new(#000000, 10), 'Bear Body',   inline='6h_body',   group=g_6h)
+i_6h_bull_border = input.color(color.new(#010201, 10), 'Bull Border', inline='6h_border', group=g_6h)
+i_6h_bear_border = input.color(color.new(#000000, 10), 'Bear Border', inline='6h_border', group=g_6h)
+i_6h_bull_wick   = input.color(color.new(#000000, 10), 'Bull Wick  ', inline='6h_wick',   group=g_6h)
+i_6h_bear_wick   = input.color(color.new(#000000, 10), 'Bear Wick',   inline='6h_wick',   group=g_6h)
+
+string g_7h = "7 Hour Colors  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_7h_bull_body   = input.color(color.new(#dbdbdb, 10), 'Bull Body  ', inline='7h_body',   group=g_7h)
+i_7h_bear_body   = input.color(color.new(#000000, 10), 'Bear Body',   inline='7h_body',   group=g_7h)
+i_7h_bull_border = input.color(color.new(#000000, 10), 'Bull Border', inline='7h_border', group=g_7h)
+i_7h_bear_border = input.color(color.new(#000000, 10), 'Bear Border', inline='7h_border', group=g_7h)
+i_7h_bull_wick   = input.color(color.new(#000000, 10), 'Bull Wick  ', inline='7h_wick',   group=g_7h)
+i_7h_bear_wick   = input.color(color.new(#000000, 10), 'Bear Wick',   inline='7h_wick',   group=g_7h)
+
+string g_fvg = "Fair Value Gap & Sweeps  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_fvg_show    = input.bool(true, 'Show Fair Value Gap',    group=g_fvg)
+i_fvg_color   = input.color(color.new(#888888, 80), 'FVG Color',           group=g_fvg)
+i_sweep_show  = input.bool(true, 'Show Sweep Lines',       group=g_fvg)
+i_sweep_color = input.color(color.new(#000000, 0),  'Sweep Line Color',    group=g_fvg)
+i_mid_show    = input.bool(true, 'Show Midpoint Lines',    group=g_fvg)
+i_mid_color   = input.color(color.new(#b21a1a, 80), 'Midpoint Line Color', group=g_fvg)
+
+string g_lbl = "Labels  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_show_label  = input.bool(true,          'Show TF label',       group=g_lbl)
+i_label_color = input.color(#000000,      'Label color',         group=g_lbl)
+i_label_size  = input.string(size.normal, 'Label size', options=[size.tiny, size.small, size.normal, size.large, size.huge], group=g_lbl)
+i_show_timer  = input.bool(true,          'Show time remaining', group=g_lbl)
+i_show_time   = input.bool(true,          'Show candle open time', group=g_lbl)
+i_time_color  = input.color(#000000,      'Open time color',     group=g_lbl)
+
+color transparent = #ffffff00
+
+string g_sess = "Session Alignment 🕒 ━━━━━━━━━━━━━━━━━"
+i_sess_mode = input.string("Auto", "Alignment Mode", options=["Auto", "Manual"], group=g_sess)
+i_daily_hr  = input.int(17, "Manual Open Hour (EST)", minval=0, maxval=23, group=g_sess, tooltip="Only used if Mode is Manual")
+i_daily_min = input.int(0,  "Manual Open Minute", minval=0, maxval=59, group=g_sess)
+
+// ══════════════════════════════════════════════════════════════
+//  RONIN CORRELATION ENGINE
+// ══════════════════════════════════════════════════════════════
+f_get_ticker(string simple_name) => 
+    if simple_name == "DXY"
+        "TVC:DXY"
+    else if simple_name == "US10Y"
+        "TVC:US10Y"
+    else
+        syminfo.prefix + ":" + simple_name
+
+f_get_ronin_correlation() =>
+    string t2 = ""
+    string t3 = ""
+    string t4 = ""
+    bool inv2 = false
+    bool inv3 = false
+    bool inv4 = false
+    
+    string check_sym = syminfo.root != "" ? syminfo.root : syminfo.ticker
+    
+    switch check_sym
+        "XAUUSD" => 
+            t2 := f_get_ticker("XAGUSD"), inv2 := false
+            t3 := f_get_ticker("XAUEUR"), inv3 := false
+            t4 := f_get_ticker("XAUGBP"), inv4 := false
+        "XAUEUR" => 
+            t2 := f_get_ticker("XAUUSD"), inv2 := false
+            t3 := f_get_ticker("XAUGBP"), inv3 := false
+        "XAUGBP" => 
+            t2 := f_get_ticker("XAUUSD"), inv2 := false
+            t3 := f_get_ticker("XAUEUR"), inv3 := false
+        "XAGUSD" => 
+            t2 := f_get_ticker("XAUUSD"), inv2 := false
+            t3 := f_get_ticker("XAUEUR"), inv3 := false
+        "RB" => 
+            t2 := "HO1!", inv2 := false
+            t3 := "CL1!", inv3 := false
+        "HO" => 
+            t2 := "RB1!", inv2 := false
+            t3 := "CL1!", inv3 := false
+        "CL" => 
+            t2 := "HO1!", inv2 := false
+            t3 := "RB1!", inv3 := false
+        "MNQ" => 
+            t2 := "MES1!", inv2 := false
+            t3 := "MYM1!", inv3 := false
+        "MES" => 
+            t2 := "MNQ1!", inv2 := false
+            t3 := "MYM1!", inv3 := false
+        "MYM" => 
+            t2 := "MES1!", inv2 := false
+            t3 := "MNQ1!", inv3 := false
+        "NQ" => 
+            t2 := "ES1!", inv2 := false
+            t3 := "YM1!", inv3 := false
+        "ES" => 
+            t2 := "NQ1!", inv2 := false
+            t3 := "YM1!", inv3 := false
+        "YM" => 
+            t2 := "ES1!", inv2 := false
+            t3 := "NQ1!", inv3 := false
+        "GC" =>
+            t2 := "SI1!", inv2 := false
+            t3 := "NQ1!", inv3 := false
+        "NASDAQ" => 
+            t2 := "PEPPERSTONE:US500", inv2 := false
+            t3 := "PEPPERSTONE:US30",  inv3 := false
+        "NDAQ100" => 
+            t2 := "PEPPERSTONE:US500", inv2 := false
+            t3 := "PEPPERSTONE:US30",  inv3 := false
+        "NAS100" => 
+            t2 := "PEPPERSTONE:US500", inv2 := false
+            t3 := "PEPPERSTONE:US30",  inv3 := false
+        "SPX500" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US30",   inv3 := false
+        "US500" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US30",   inv3 := false
+        "US30" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US500",  inv3 := false
+        "DJI" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US500",  inv3 := false
+        "WALLSTREET" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US500",  inv3 := false
+        "EURUSD" => 
+            t2 := f_get_ticker("GBPUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true 
+        "GBPUSD" => 
+            t2 := f_get_ticker("EURUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true 
+        "AUDUSD" => 
+            t2 := f_get_ticker("NZDUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true
+        "NZDUSD" => 
+            t2 := f_get_ticker("AUDUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true
+        "USDJPY" => 
+            t2 := "TVC:DXY",              inv2 := false
+        "USDCAD" => 
+            t2 := "TVC:DXY",              inv2 := false
+        "USDCHF" => 
+            t2 := "TVC:DXY",              inv2 := false
+        "EURJPY" => 
+            t2 := f_get_ticker("GBPJPY"), inv2 := false
+        "GBPJPY" => 
+            t2 := f_get_ticker("EURJPY"), inv2 := false
+        "AUDJPY" => 
+            t2 := f_get_ticker("NZDJPY"), inv2 := false
+        "NZDJPY" => 
+            t2 := f_get_ticker("AUDJPY"), inv2 := false
+        "EURAUD" => 
+            t2 := f_get_ticker("GBPAUD"), inv2 := false
+        "GBPAUD" => 
+            t2 := f_get_ticker("EURAUD"), inv2 := false
+        "EURNZD" => 
+            t2 := f_get_ticker("GBPNZD"), inv2 := false
+        "GBPNZD" => 
+            t2 := f_get_ticker("EURNZD"), inv2 := false
+        "EURCAD" => 
+            t2 := f_get_ticker("GBPCAD"), inv2 := false
+        "GBPCAD" => 
+            t2 := f_get_ticker("EURCAD"), inv2 := false
+        "AUDCAD" => 
+            t2 := f_get_ticker("NZDCAD"), inv2 := false
+        "NZDCAD" => 
+            t2 := f_get_ticker("AUDCAD"), inv2 := false
+        "BTCUSDT" =>
+            t2 := f_get_ticker("ETHUSDT"), inv2 := false
+        "ETHUSDT" =>
+            t2 := f_get_ticker("BTCUSDT"), inv2 := false
+            
+    [t2, t3, t4, inv2, inv3, inv4]
+
+var string ticker1 = syminfo.tickerid 
+var string ticker2 = ""
+var string ticker3 = ""
+var string ticker4 = ""
+var bool   inv2    = false
+var bool   inv3    = false
+var bool   inv4    = false
+
+if barstate.isfirst
+    if i_psp_mode == "Auto (Ronin)"
+        [t2, t3, t4, i2, i3, i4] = f_get_ronin_correlation()
+        ticker2 := t2
+        ticker3 := t3
+        ticker4 := t4
+        inv2 := i2
+        inv3 := i3
+        inv4 := i4
+    else
+        ticker2 := i_psp_t2
+        ticker3 := i_psp_t3
+        inv3    := i_psp_inv3
+
+// ══════════════════════════════════════════════════════════════
+//  AUTO-DETECT LOGIC (BROKER AGNOSTIC)
+// ══════════════════════════════════════════════════════════════
+int current_d_time = time("D")
+int auto_hr  = not na(current_d_time) ? hour(current_d_time, "America/New_York") : 17
+int auto_min = not na(current_d_time) ? minute(current_d_time, "America/New_York") : 0
+
+int eff_hr  = i_sess_mode == "Auto" ? auto_hr : i_daily_hr
+int eff_min = i_sess_mode == "Auto" ? auto_min : i_daily_min
+
+// ══════════════════════════════════════════════════════════════
+//  DYNAMIC LOWER TIMEFRAME ARRAY AGGREGATOR
+// ══════════════════════════════════════════════════════════════
+string auto_base_tf = timeframe.in_seconds() < 900 ? timeframe.period : "15"
+
+// Base Ticker Arrays
+var array<float> g_o15 = array.new<float>()
+var array<float> g_h15 = array.new<float>()
+var array<float> g_l15 = array.new<float>()
+var array<float> g_c15 = array.new<float>()
+var array<int>   g_t15 = array.new<int>()
+
+// Correlated Ticker Arrays (Only O/C needed for PSP)
+var array<float> g_o2 = array.new<float>()
+var array<float> g_c2 = array.new<float>()
+var array<int>   g_t2 = array.new<int>()
+
+var array<float> g_o3 = array.new<float>()
+var array<float> g_c3 = array.new<float>()
+var array<int>   g_t3 = array.new<int>()
+
+var array<float> g_o4 = array.new<float>()
+var array<float> g_c4 = array.new<float>()
+var array<int>   g_t4 = array.new<int>()
+
+[o15, h15, l15, c15, t15] = request.security_lower_tf(syminfo.tickerid, auto_base_tf, [open, high, low, close, time])
+[o15_2, c15_2, t15_2]     = request.security_lower_tf(ticker2 != "" ? ticker2 : syminfo.tickerid, auto_base_tf, [open, close, time], ignore_invalid_symbol=true)
+[o15_3, c15_3, t15_3]     = request.security_lower_tf(ticker3 != "" ? ticker3 : syminfo.tickerid, auto_base_tf, [open, close, time], ignore_invalid_symbol=true)
+[o15_4, c15_4, t15_4]     = request.security_lower_tf(ticker4 != "" ? ticker4 : syminfo.tickerid, auto_base_tf, [open, close, time], ignore_invalid_symbol=true)
+
+f_push_arrays(arr_src, arr_dst) =>
+    if array.size(arr_src) > 0
+        for i = 0 to array.size(arr_src) - 1
+            array.push(arr_dst, array.get(arr_src, i))
+
+f_push_arrays(o15, g_o15), f_push_arrays(h15, g_h15), f_push_arrays(l15, g_l15), f_push_arrays(c15, g_c15), f_push_arrays(t15, g_t15)
+if ticker2 != ""
+    f_push_arrays(o15_2, g_o2), f_push_arrays(c15_2, g_c2), f_push_arrays(t15_2, g_t2)
+if ticker3 != ""
+    f_push_arrays(o15_3, g_o3), f_push_arrays(c15_3, g_c3), f_push_arrays(t15_3, g_t3)
+if ticker4 != ""
+    f_push_arrays(o15_4, g_o4), f_push_arrays(c15_4, g_c4), f_push_arrays(t15_4, g_t4)
+
+f_clip_arrays(arr) =>
+    int max_bars = 5000 
+    if array.size(arr) > max_bars
+        int excess = array.size(arr) - max_bars
+        for i = 1 to excess
+            array.shift(arr)
+
+f_clip_arrays(g_o15), f_clip_arrays(g_h15), f_clip_arrays(g_l15), f_clip_arrays(g_c15), f_clip_arrays(g_t15)
+f_clip_arrays(g_o2), f_clip_arrays(g_c2), f_clip_arrays(g_t2)
+f_clip_arrays(g_o3), f_clip_arrays(g_c3), f_clip_arrays(g_t3)
+f_clip_arrays(g_o4), f_clip_arrays(g_c4), f_clip_arrays(g_t4)
+
+f_get_custom_htf(int target_mins, array<int> arr_t, array<float> arr_o, array<float> arr_h, array<float> arr_l, array<float> arr_c) =>
+    array<float> out_o = array.new<float>()
+    array<float> out_h = array.new<float>()
+    array<float> out_l = array.new<float>()
+    array<float> out_c = array.new<float>()
+    array<int>   out_t = array.new<int>()
+    
+    int sz = array.size(arr_t)
+    if sz > 0
+        int last_htf_open = -1
+        float cur_o = na, float cur_h = na, float cur_l = na, float cur_c = na
+        int cur_t = na
+        
+        for i = sz - 1 to 0
+            int t = array.get(arr_t, i)
+            int h_ny = hour(t, "America/New_York")
+            int m_ny = minute(t, "America/New_York")
+            
+            int elapsed_mins_today = h_ny * 60 + m_ny
+            int anchor_mins_today = eff_hr * 60 + eff_min
+            
+            int shift_mins = elapsed_mins_today - anchor_mins_today
+            if shift_mins < 0
+                shift_mins += 1440
+                
+            int htf_open_time = t - ((shift_mins % target_mins) * 60000)
+            
+            if htf_open_time != last_htf_open
+                if last_htf_open != -1
+                    array.push(out_o, cur_o), array.push(out_h, cur_h), array.push(out_l, cur_l), array.push(out_c, cur_c), array.push(out_t, cur_t)
+                    if array.size(out_o) >= 5
+                        break
+                        
+                last_htf_open := htf_open_time
+                cur_c := array.get(arr_c, i), cur_h := array.get(arr_h, i), cur_l := array.get(arr_l, i), cur_o := array.get(arr_o, i), cur_t := htf_open_time
+            else
+                cur_h := math.max(cur_h, array.get(arr_h, i)), cur_l := math.min(cur_l, array.get(arr_l, i)), cur_o := array.get(arr_o, i)
+                
+        if array.size(out_o) < 5 and last_htf_open != -1
+            array.push(out_o, cur_o), array.push(out_h, cur_h), array.push(out_l, cur_l), array.push(out_c, cur_c), array.push(out_t, cur_t)
+            
+    while array.size(out_o) < 5
+        array.push(out_o, na), array.push(out_h, na), array.push(out_l, na), array.push(out_c, na), array.push(out_t, na)
+        
+    [out_o, out_h, out_l, out_c, out_t]
+
+f_get_custom_htf_oc(int target_mins, array<int> arr_t, array<float> arr_o, array<float> arr_c) =>
+    array<float> out_o = array.new<float>()
+    array<float> out_c = array.new<float>()
+    
+    int sz = array.size(arr_t)
+    if sz > 0
+        int last_htf_open = -1
+        float cur_o = na, float cur_c = na
+        for i = sz - 1 to 0
+            int t = array.get(arr_t, i)
+            int h_ny = hour(t, "America/New_York"), m_ny = minute(t, "America/New_York")
+            int shift_mins = (h_ny * 60 + m_ny) - (eff_hr * 60 + eff_min)
+            if shift_mins < 0
+                shift_mins += 1440
+            int htf_open_time = t - ((shift_mins % target_mins) * 60000)
+
+            if htf_open_time != last_htf_open
+                if last_htf_open != -1
+                    array.push(out_o, cur_o), array.push(out_c, cur_c)
+                    if array.size(out_o) >= 5
+                        break
+                last_htf_open := htf_open_time
+                cur_c := array.get(arr_c, i), cur_o := array.get(arr_o, i)
+            else
+                cur_o := array.get(arr_o, i)
+                
+        if array.size(out_o) < 5 and last_htf_open != -1
+            array.push(out_o, cur_o), array.push(out_c, cur_c)
+            
+    while array.size(out_o) < 5
+        array.push(out_o, na), array.push(out_c, na)
+    [out_o, out_c]
+
+// ══════════════════════════════════════════════════════════════
+//  PSP CALCULATION ENGINE
+// ══════════════════════════════════════════════════════════════
+f_calc_psp(array<float> os, array<float> hs, array<float> ls, array<float> cs, array<float> o2, array<float> c2, array<float> o3, array<float> c3, array<float> o4, array<float> c4) =>
+    array<int> psp = array.new<int>(5, 0)
+    int left = i_psp_left
+    int right = i_psp_right
+
+    for i = right to (4 - left)
+        if na(os.get(i))
+            continue
+
+        bool is_ph = true
+        for j = 1 to left
+            if hs.get(i) <= hs.get(i + j)
+                is_ph := false
+        for j = 1 to right
+            if hs.get(i) <= hs.get(i - j)
+                is_ph := false
+
+        bool is_pl = true
+        for j = 1 to left
+            if ls.get(i) >= ls.get(i + j)
+                is_pl := false
+        for j = 1 to right
+            if ls.get(i) >= ls.get(i - j)
+                is_pl := false
+
+        if is_ph or is_pl
+            bool b1 = cs.get(i) >= os.get(i)
+            bool crack = false
+
+            if ticker2 != "" and array.size(o2) > i and not na(o2.get(i))
+                bool b2 = (c2.get(i) >= o2.get(i))
+                if inv2
+                    b2 := not b2
+                if b1 != b2
+                    crack := true
+
+            if ticker3 != "" and array.size(o3) > i and not na(o3.get(i))
+                bool b3 = (c3.get(i) >= o3.get(i))
+                if inv3
+                    b3 := not b3
+                if b1 != b3
+                    crack := true
+
+            if ticker4 != "" and array.size(o4) > i and not na(o4.get(i))
+                bool b4 = (c4.get(i) >= o4.get(i))
+                if inv4
+                    b4 := not b4
+                if b1 != b4
+                    crack := true
+
+            if crack
+                if is_ph
+                    psp.set(i, 1) // 1 = psp bear color
+                if is_pl
+                    psp.set(i, 2) // 2 = psp bull color
+    psp
+
+// ══════════════════════════════════════════════════════════════
+//  MAP VARIABLES TO DRAW LOGIC
+// ══════════════════════════════════════════════════════════════
+[o90_arr, h90_arr, l90_arr, c90_arr, t90_arr] = f_get_custom_htf(90, g_t15, g_o15, g_h15, g_l15, g_c15)
+[o90_t2, c90_t2] = f_get_custom_htf_oc(90, g_t2, g_o2, g_c2)
+[o90_t3, c90_t3] = f_get_custom_htf_oc(90, g_t3, g_o3, g_c3)
+[o90_t4, c90_t4] = f_get_custom_htf_oc(90, g_t4, g_o4, g_c4)
+array<int> psp_90 = i_psp_show ? f_calc_psp(o90_arr, h90_arr, l90_arr, c90_arr, o90_t2, c90_t2, o90_t3, c90_t3, o90_t4, c90_t4) : array.new<int>(5, 0)
+
+[o6h_arr, h6h_arr, l6h_arr, c6h_arr, t6h_arr] = f_get_custom_htf(360, g_t15, g_o15, g_h15, g_l15, g_c15)
+[o6h_t2, c6h_t2] = f_get_custom_htf_oc(360, g_t2, g_o2, g_c2)
+[o6h_t3, c6h_t3] = f_get_custom_htf_oc(360, g_t3, g_o3, g_c3)
+[o6h_t4, c6h_t4] = f_get_custom_htf_oc(360, g_t4, g_o4, g_c4)
+array<int> psp_6h = i_psp_show ? f_calc_psp(o6h_arr, h6h_arr, l6h_arr, c6h_arr, o6h_t2, c6h_t2, o6h_t3, c6h_t3, o6h_t4, c6h_t4) : array.new<int>(5, 0)
+
+[o7h_arr, h7h_arr, l7h_arr, c7h_arr, t7h_arr] = f_get_custom_htf(420, g_t15, g_o15, g_h15, g_l15, g_c15)
+[o7h_t2, c7h_t2] = f_get_custom_htf_oc(420, g_t2, g_o2, g_c2)
+[o7h_t3, c7h_t3] = f_get_custom_htf_oc(420, g_t3, g_o3, g_c3)
+[o7h_t4, c7h_t4] = f_get_custom_htf_oc(420, g_t4, g_o4, g_c4)
+array<int> psp_7h = i_psp_show ? f_calc_psp(o7h_arr, h7h_arr, l7h_arr, c7h_arr, o7h_t2, c7h_t2, o7h_t3, c7h_t3, o7h_t4, c7h_t4) : array.new<int>(5, 0)
+
+o90_0 = array.get(o90_arr, 0), h90_0 = array.get(h90_arr, 0), l90_0 = array.get(l90_arr, 0), c90_0 = array.get(c90_arr, 0), t90_0 = array.get(t90_arr, 0)
+o90_1 = array.get(o90_arr, 1), h90_1 = array.get(h90_arr, 1), l90_1 = array.get(l90_arr, 1), c90_1 = array.get(c90_arr, 1), t90_1 = array.get(t90_arr, 1)
+o90_2 = array.get(o90_arr, 2), h90_2 = array.get(h90_arr, 2), l90_2 = array.get(l90_arr, 2), c90_2 = array.get(c90_arr, 2), t90_2 = array.get(t90_arr, 2)
+o90_3 = array.get(o90_arr, 3), h90_3 = array.get(h90_arr, 3), l90_3 = array.get(l90_arr, 3), c90_3 = array.get(c90_arr, 3), t90_3 = array.get(t90_arr, 3)
+o90_4 = array.get(o90_arr, 4), h90_4 = array.get(h90_arr, 4), l90_4 = array.get(l90_arr, 4), c90_4 = array.get(c90_arr, 4), t90_4 = array.get(t90_arr, 4)
+
+o6h_0 = array.get(o6h_arr, 0), h6h_0 = array.get(h6h_arr, 0), l6h_0 = array.get(l6h_arr, 0), c6h_0 = array.get(c6h_arr, 0), t6h_0 = array.get(t6h_arr, 0)
+o6h_1 = array.get(o6h_arr, 1), h6h_1 = array.get(h6h_arr, 1), l6h_1 = array.get(l6h_arr, 1), c6h_1 = array.get(c6h_arr, 1), t6h_1 = array.get(t6h_arr, 1)
+o6h_2 = array.get(o6h_arr, 2), h6h_2 = array.get(h6h_arr, 2), l6h_2 = array.get(l6h_arr, 2), c6h_2 = array.get(c6h_arr, 2), t6h_2 = array.get(t6h_arr, 2)
+o6h_3 = array.get(o6h_arr, 3), h6h_3 = array.get(h6h_arr, 3), l6h_3 = array.get(l6h_arr, 3), c6h_3 = array.get(c6h_arr, 3), t6h_3 = array.get(t6h_arr, 3)
+o6h_4 = array.get(o6h_arr, 4), h6h_4 = array.get(h6h_arr, 4), l6h_4 = array.get(l6h_arr, 4), c6h_4 = array.get(c6h_arr, 4), t6h_4 = array.get(t6h_arr, 4)
+
+o7h_0 = array.get(o7h_arr, 0), h7h_0 = array.get(h7h_arr, 0), l7h_0 = array.get(l7h_arr, 0), c7h_0 = array.get(c7h_arr, 0), t7h_0 = array.get(t7h_arr, 0)
+o7h_1 = array.get(o7h_arr, 1), h7h_1 = array.get(h7h_arr, 1), l7h_1 = array.get(l7h_arr, 1), c7h_1 = array.get(c7h_arr, 1), t7h_1 = array.get(t7h_arr, 1)
+o7h_2 = array.get(o7h_arr, 2), h7h_2 = array.get(h7h_arr, 2), l7h_2 = array.get(l7h_arr, 2), c7h_2 = array.get(c7h_arr, 2), t7h_2 = array.get(t7h_arr, 2)
+o7h_3 = array.get(o7h_arr, 3), h7h_3 = array.get(h7h_arr, 3), l7h_3 = array.get(l7h_arr, 3), c7h_3 = array.get(c7h_arr, 3), t7h_3 = array.get(t7h_arr, 3)
+o7h_4 = array.get(o7h_arr, 4), h7h_4 = array.get(h7h_arr, 4), l7h_4 = array.get(l7h_arr, 4), c7h_4 = array.get(c7h_arr, 4), t7h_4 = array.get(t7h_arr, 4)
+
+// ══════════════════════════════════════════════════════════════
+//  TRACE START INDEX TRACKERS (Prevents xloc error)
+// ══════════════════════════════════════════════════════════════
+var int idx_90m = bar_index
+if t90_0 != t90_0[1]
+    idx_90m := bar_index
+
+var int idx_6h = bar_index
+if t6h_0 != t6h_0[1]
+    idx_6h := bar_index
+
+var int idx_7h = bar_index
+if t7h_0 != t7h_0[1]
+    idx_7h := bar_index
+
+// ══════════════════════════════════════════════════════════════
+//  DRAWING STORAGE & TRACES
+// ══════════════════════════════════════════════════════════════
+var array<box>   g_bodies    = array.new<box>()
+var array<line>  g_wicks_up  = array.new<line>()
+var array<line>  g_wicks_dn  = array.new<line>()
+var array<box>   g_fvgs      = array.new<box>()
+var array<line>  g_sweeps    = array.new<line>()
+var array<line>  g_mids      = array.new<line>()
+var array<label> g_timelabels = array.new<label>()
+var array<line>  g_traces    = array.new<line>()
+
+var label g_lbl_90m = na
+var label g_lbl_6h  = na
+var label g_lbl_7h  = na
+
+// ══════════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════════
+isValidHTF(int target_mins) =>
+    timeframe.in_seconds() <= target_mins * 60
+
+calcMidpoint(float h, float l, float o, float c) =>
+    float lh = math.log(h)
+    float ll = math.log(l)
+    float lo = math.log(o)
+    float lc = math.log(c)
+    float uw = lh - math.max(lo, lc)
+    float lw = math.min(lo, lc) - ll
+    float bs = math.abs(lc - lo)
+    float lmid = math.max(uw, lw) > bs ? (uw > lw ? lh - uw / 2 : ll + lw / 2) : (lh + ll) / 2
+    math.exp(lmid)
+
+formatTime(int t) =>
+    str.format_time(t, "HH:mm", "America/New_York")
+
+remainingCustomTime(int openTime, int target_mins) =>
+    if barstate.isrealtime and not na(openTime)
+        int closeTime = openTime + (target_mins * 60000)
+        int rem = math.max(0, int((closeTime - timenow) / 1000))
+        if rem == 0
+            '00:00'
+        else
+            int d = int(rem / 86400)
+            int h = int((rem - d * 86400) / 3600)
+            int m = int((rem - d * 86400 - h * 3600) / 60)
+            int s = int(rem - d * 86400 - h * 3600 - m * 60)
+            string r = str.tostring(s, '00')
+            if m > 0 or h > 0 or d > 0
+                r := str.tostring(m, '00') + ':' + r
+            if h > 0 or d > 0
+                r := str.tostring(h, '00') + ':' + r
+            if d > 0
+                r := str.tostring(d) + 'D ' + r
+            r
+    else
+        'n/a'
+
+get_line_style2(string s) =>
+    s == "----" ? line.style_dashed : s == "····" ? line.style_dotted : line.style_solid
+
+f_draw_traces(int start_idx, float o, float h, float l, float c, int newest_x1, int newest_xm, string tf_name) =>
+    if i_trace_tf == "All" or i_trace_tf == tf_name
+        if i_trace_o
+            g_traces.push(line.new(start_idx, o, newest_x1, o, color=i_trace_o_col, style=get_line_style2(i_trace_o_sty)))
+        if i_trace_c
+            g_traces.push(line.new(start_idx, c, newest_x1, c, color=i_trace_c_col, style=get_line_style2(i_trace_c_sty)))
+        if i_trace_h
+            g_traces.push(line.new(start_idx, h, newest_xm, h, color=i_trace_h_col, style=get_line_style2(i_trace_h_sty)))
+        if i_trace_l
+            g_traces.push(line.new(start_idx, l, newest_xm, l, color=i_trace_l_col, style=get_line_style2(i_trace_l_sty)))
+
+// ══════════════════════════════════════════════════════════════
+//  DELETE ALL
+// ══════════════════════════════════════════════════════════════
+deleteAll() =>
+    int i = 0
+    while i < g_bodies.size()
+        box.delete(g_bodies.get(i)), i += 1
+    g_bodies.clear(), i := 0
+    while i < g_wicks_up.size()
+        line.delete(g_wicks_up.get(i)), i += 1
+    g_wicks_up.clear(), i := 0
+    while i < g_wicks_dn.size()
+        line.delete(g_wicks_dn.get(i)), i += 1
+    g_wicks_dn.clear(), i := 0
+    while i < g_fvgs.size()
+        box.delete(g_fvgs.get(i)), i += 1
+    g_fvgs.clear(), i := 0
+    while i < g_sweeps.size()
+        line.delete(g_sweeps.get(i)), i += 1
+    g_sweeps.clear(), i := 0
+    while i < g_mids.size()
+        line.delete(g_mids.get(i)), i += 1
+    g_mids.clear(), i := 0
+    while i < g_timelabels.size()
+        label.delete(g_timelabels.get(i)), i += 1
+    g_timelabels.clear()
+    while g_traces.size() > 0
+        line.delete(g_traces.pop())
+
+// ══════════════════════════════════════════════════════════════
+//  DRAW CANDLE
+// ══════════════════════════════════════════════════════════════
+drawCandle(float o, float h, float l, float c, int t, int slot, int startOff, TFColors col, int psp_status) =>
+    int x1 = bar_index + startOff + slot * (i_width + i_buffer)
+    int x2 = x1 + i_width
+    int xm = x1 + i_width / 2
+    bool bull = c >= o
+    
+    color b_col = bull ? col.bull_body : col.bear_body
+    if psp_status == 1
+        b_col := i_psp_bear_col
+    else if psp_status == 2
+        b_col := i_psp_bull_col
+        
+    box bd = box.new(x1, math.max(o,c), x2, math.min(o,c),
+             bull ? col.bull_border : col.bear_border, 1,
+             bgcolor = b_col)
+    line wu = line.new(xm, h, xm, math.max(o,c), color = bull ? col.bull_wick : col.bear_wick)
+    line wd = line.new(xm, math.min(o,c), xm, l,  color = bull ? col.bull_wick : col.bear_wick)
+    g_bodies.push(bd)
+    g_wicks_up.push(wu)
+    g_wicks_dn.push(wd)
+    
+    if i_show_time and not na(t)
+        label tl = label.new(xm, l, formatTime(t),
+                     color=transparent, textcolor=i_time_color,
+                     style=label.style_label_up, size=size.normal,
+                     text_font_family=font.family_monospace)
+        g_timelabels.push(tl)
+    [x1, x2, h, l]
+
+// ══════════════════════════════════════════════════════════════
+//  DRAW BLOCK
+// ══════════════════════════════════════════════════════════════
+drawBlock(
+     float o0, float h0, float l0, float c0, int t0,
+     float o1, float h1, float l1, float c1, int t1,
+     float o2, float h2, float l2, float c2, int t2,
+     float o3, float h3, float l3, float c3, int t3,
+     float o4, float h4, float l4, float c4, int t4,
+     array<int> psp_arr, int startOff, int n, TFColors col) =>
+
+    os = array.from(o4, o3, o2, o1, o0)
+    hs = array.from(h4, h3, h2, h1, h0)
+    ls = array.from(l4, l3, l2, l1, l0)
+    cs = array.from(c4, c3, c2, c1, c0)
+    ts = array.from(t4, t3, t2, t1, t0)
+
+    int si = 5 - n
+
+    xs1  = array.new<int>()
+    xs2  = array.new<int>()
+    chs  = array.new<float>()
+    cls  = array.new<float>()
+    cos  = array.new<float>()
+    ccs  = array.new<float>()
+    float blockHigh = 0.0
+
+    int slot = 0
+    while slot < n
+        int idx = si + slot
+        float co = os.get(idx)
+        float ch = hs.get(idx)
+        float cl = ls.get(idx)
+        float cc = cs.get(idx)
+        int   ct = ts.get(idx)
+        
+        int p_idx = 4 - idx // Match array indexing for PSP
+        int psp_status = psp_arr.get(p_idx)
+        
+        if not na(co)
+            [x1, x2, cvh, cvl] = drawCandle(co, ch, cl, cc, ct, slot, startOff, col, psp_status)
+            xs1.push(x1)
+            xs2.push(x2)
+            chs.push(ch)
+            cls.push(cl)
+            cos.push(co)
+            ccs.push(cc)
+            if ch > blockHigh
+                blockHigh := ch
+        slot += 1
+
+    int drawn = xs1.size()
+
+    if i_mid_show and drawn >= 2
+        int i = 0
+        while i < drawn - 1
+            float mid = calcMidpoint(chs.get(i), cls.get(i), cos.get(i), ccs.get(i))
+            int mx1 = xs1.get(i)   + i_width / 2
+            int mx2 = xs1.get(i+1) + i_width / 2
+            g_mids.push(line.new(mx1, mid, mx2, mid, color=i_mid_color, style=line.style_dotted, width=1))
+            i += 1
+
+    if i_sweep_show and drawn >= 2
+        int i = 0
+        while i < drawn - 1
+            float ph = chs.get(i)
+            float pl = cls.get(i)
+            float nh = chs.get(i+1)
+            float nl = cls.get(i+1)
+            float nc = ccs.get(i+1)
+            int sx1 = xs1.get(i)   + i_width / 2
+            int sx2 = xs2.get(i+1)
+            if nh > ph and nc < ph
+                g_sweeps.push(line.new(sx1, ph, sx2, ph, color=i_sweep_color, width=1))
+            if nl < pl and nc > pl
+                g_sweeps.push(line.new(sx1, pl, sx2, pl, color=i_sweep_color, width=1))
+            i += 1
+
+    if i_fvg_show and drawn >= 3
+        int i = 0
+        while i < drawn - 2
+            float h1f = chs.get(i)
+            float l1f = cls.get(i)
+            float h3f = chs.get(i+2)
+            float l3f = cls.get(i+2)
+            int fx1 = xs1.get(i)
+            int fx2 = xs2.get(i+2)
+            if l1f > h3f
+                g_fvgs.push(box.new(fx1, l1f, fx2, h3f, bgcolor=i_fvg_color, border_color=transparent))
+            if h1f < l3f
+                g_fvgs.push(box.new(fx1, l3f, fx2, h1f, bgcolor=i_fvg_color, border_color=transparent))
+            i += 1
+
+    int totalW  = n * i_width + math.max(0, n-1) * i_buffer
+    int centerX = bar_index + startOff + totalW / 2
+    [centerX, blockHigh, startOff + totalW + i_htfgap]
+
+// ══════════════════════════════════════════════════════════════
+//  COLOR OBJECTS
+// ══════════════════════════════════════════════════════════════
+TFColors col_90m = TFColors.new(i_90m_bull_body,i_90m_bear_body,i_90m_bull_border,i_90m_bear_border,i_90m_bull_wick,i_90m_bear_wick)
+TFColors col_6h  = TFColors.new(i_6h_bull_body, i_6h_bear_body, i_6h_bull_border, i_6h_bear_border, i_6h_bull_wick, i_6h_bear_wick)
+TFColors col_7h  = TFColors.new(i_7h_bull_body, i_7h_bear_body, i_7h_bull_border, i_7h_bear_border, i_7h_bull_wick, i_7h_bear_wick)
+
+// ══════════════════════════════════════════════════════════════
+//  MAIN
+// ══════════════════════════════════════════════════════════════
+if barstate.islast
+    deleteAll()
+    int n   = math.min(i_maxshow, 5)
+    int off = i_offset
+
+    if i_show_90m and isValidHTF(90)
+        [cx, top, nextOff] = drawBlock(
+             o90_0,h90_0,l90_0,c90_0,t90_0,
+             o90_1,h90_1,l90_1,c90_1,t90_1,
+             o90_2,h90_2,l90_2,c90_2,t90_2,
+             o90_3,h90_3,l90_3,c90_3,t90_3,
+             o90_4,h90_4,l90_4,c90_4,t90_4,
+             psp_90, off, n, col_90m)
+        
+        int newest_x1_90m = bar_index + off + (n - 1) * (i_width + i_buffer)
+        f_draw_traces(idx_90m, o90_0, h90_0, l90_0, c90_0, newest_x1_90m, newest_x1_90m + i_width / 2, "90M")
+
+        if i_show_label
+            string txt = 'TF: 90M' + (i_show_timer ? '\n[' + remainingCustomTime(t90_0, 90) + ']' : '')
+            if na(g_lbl_90m)
+                g_lbl_90m := label.new(cx, top, txt, color=transparent, textcolor=i_label_color, style=label.style_label_down, size=i_label_size, text_font_family=font.family_monospace)
+            else
+                label.set_xy(g_lbl_90m, cx, top)
+                label.set_text(g_lbl_90m, txt)
+        off := nextOff
+
+    if i_show_6h and isValidHTF(360)
+        [cx, top, nextOff] = drawBlock(
+             o6h_0,h6h_0,l6h_0,c6h_0,t6h_0,
+             o6h_1,h6h_1,l6h_1,c6h_1,t6h_1,
+             o6h_2,h6h_2,l6h_2,c6h_2,t6h_2,
+             o6h_3,h6h_3,l6h_3,c6h_3,t6h_3,
+             o6h_4,h6h_4,l6h_4,c6h_4,t6h_4,
+             psp_6h, off, n, col_6h)
+             
+        int newest_x1_6h = bar_index + off + (n - 1) * (i_width + i_buffer)
+        f_draw_traces(idx_6h, o6h_0, h6h_0, l6h_0, c6h_0, newest_x1_6h, newest_x1_6h + i_width / 2, "6H")
+
+        if i_show_label
+            string txt = 'TF: 6H' + (i_show_timer ? '\n[' + remainingCustomTime(t6h_0, 360) + ']' : '')
+            if na(g_lbl_6h)
+                g_lbl_6h := label.new(cx, top, txt, color=transparent, textcolor=i_label_color, style=label.style_label_down, size=i_label_size, text_font_family=font.family_monospace)
+            else
+                label.set_xy(g_lbl_6h, cx, top)
+                label.set_text(g_lbl_6h, txt)
+        off := nextOff
+
+    if i_show_7h and isValidHTF(420)
+        [cx, top, nextOff] = drawBlock(
+             o7h_0,h7h_0,l7h_0,c7h_0,t7h_0,
+             o7h_1,h7h_1,l7h_1,c7h_1,t7h_1,
+             o7h_2,h7h_2,l7h_2,c7h_2,t7h_2,
+             o7h_3,h7h_3,l7h_3,c7h_3,t7h_3,
+             o7h_4,h7h_4,l7h_4,c7h_4,t7h_4,
+             psp_7h, off, n, col_7h)
+             
+        int newest_x1_7h = bar_index + off + (n - 1) * (i_width + i_buffer)
+        f_draw_traces(idx_7h, o7h_0, h7h_0, l7h_0, c7h_0, newest_x1_7h, newest_x1_7h + i_width / 2, "7H")
+
+        if i_show_label
+            string txt = 'TF: 7H' + (i_show_timer ? '\n[' + remainingCustomTime(t7h_0, 420) + ']' : '')
+            if na(g_lbl_7h)
+                g_lbl_7h := label.new(cx, top, txt, color=transparent, textcolor=i_label_color, style=label.style_label_down, size=i_label_size, text_font_family=font.family_monospace)
+            else
+                label.set_xy(g_lbl_7h, cx, top)
+                label.set_text(g_lbl_7h, txt)
