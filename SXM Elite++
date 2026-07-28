@@ -1,0 +1,3014 @@
+// © DedreduPlessis
+// Created: 2024-07-13
+// Last modified: 2024-07-14
+// Version 1.0
+
+//@version=6
+indicator("SXM Elite++", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+
+//// Auto mapping function for HTF based on chart timeframe
+auto_map_tf(string chart_tf) =>
+    float ts = timeframe.in_seconds(chart_tf)
+    string mapped = chart_tf
+    if ts <= 60
+        mapped := "15"
+    else if ts <= 180
+        mapped := "30"
+    else if ts <= 300
+        mapped := "60"
+    else if ts <= 900
+        mapped := "240"
+    else if ts <= 3600
+        mapped := "D"
+    else if ts <= 14400
+        mapped := "W"
+    else if ts <= 604800
+        mapped := "1M"
+    mapped
+
+// Inputs
+toggle_sep        = input.bool    (true,          "Show Period Separator")
+sepColorInput     = input.color   (color.rgb(61, 61, 61),    "Separator Color")
+sepStyleInput     = input.string  ("Dotted",      "Separator Style", options = ["Solid", "Dashed", "Dotted"])
+sepWidthInput     = input.int     (1,             "Separator Width", minval = 1)
+sepTimeframeInput = input.string  ("Auto",        "Separator Timeframe (Auto uses fractal)", options = ["Auto", "1", "3", "5", "15", "30", "45", "60", "120", "180", "240", "D", "W", "1M"])  // Timeframe for the separator
+
+// Function to get the line style
+getLineStyle(string input) =>
+    switch input
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+
+// Function to draw the period separator
+drawPeriodSeparator(color color, string style, int width, string timeframe) =>
+    if timeframe.change(timeframe)
+        line.new(
+             x1     = bar_index,
+             x2     = bar_index,
+             y1     = high + syminfo.mintick,
+             y2     = low,
+             extend = extend.both,
+             color  = color,
+             style  = getLineStyle(style),
+             width  = width
+             )
+
+// Draw the period separator based on the selected timeframe and visible on the same or lower timeframes
+mapped_sep_tf = sepTimeframeInput == "Auto" ? auto_map_tf(timeframe.period) : sepTimeframeInput
+if toggle_sep and timeframe.in_seconds(timeframe.period) <= timeframe.in_seconds(mapped_sep_tf)
+    drawPeriodSeparator(sepColorInput, sepStyleInput, sepWidthInput, mapped_sep_tf)
+
+
+
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+
+type TFColors
+    color bull_body
+    color bear_body
+    color bull_border
+    color bear_border
+    color bull_wick
+    color bear_wick
+
+string g_layout = "Layout  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_offset  = input.int(10, 'Padding from last candle', minval=1, maxval=50, group=g_layout)
+i_buffer  = input.int(1,  'Space between candles',    minval=1, maxval=4,  group=g_layout)
+i_htfgap  = input.int(5,  'Gap between timeframes',   minval=1, maxval=20, group=g_layout)
+i_width   = input.int(1,  'Candle width',             minval=1, maxval=6,  group=g_layout) * 2
+i_maxshow = input.int(4,  'Candles to show (each TF)',minval=1, maxval=5,  group=g_layout)
+
+string g_tf = "Timeframes  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_show_90m = input.bool(false, 'Show 90 Min candles', group=g_tf)
+i_show_6h  = input.bool(true, 'Show 6 Hour candles',  group=g_tf)
+i_show_7h  = input.bool(false, 'Show 7 Hour candles',  group=g_tf)
+
+string g_psp = "PSP Settings ↔️ ━━━━━━━━━━━━━━━━━━━━━"
+i_psp_show      = input.bool(true, "Enable PSP Correlation Engine", group=g_psp)
+i_psp_mode      = input.string("Auto (Ronin)", "Correlation Mode", options=["Auto (Ronin)", "Manual"], group=g_psp)
+i_psp_left      = input.int(1, "Pivot Left Bars", minval=1, group=g_psp)
+i_psp_right     = input.int(1, "Pivot Right Bars", minval=1, group=g_psp)
+i_psp_bull_col  = input.color(color.new(#00ff62, 60), "Bullish PSP Color (Sweep Low)", group=g_psp)
+i_psp_bear_col  = input.color(color.new(#ff002b, 60), "Bearish PSP Color (Sweep High)", group=g_psp)
+i_psp_t2        = input.symbol("", "Manual Pair 2", group=g_psp)
+i_psp_t3        = input.symbol("TVC:DXY", "Manual Pair 3", group=g_psp)
+i_psp_inv3      = input.bool(true, "Invert Pair 3? (e.g. DXY)", group=g_psp)
+
+string g_trace = "Trace Lines ──── ━━━━━━━━━━━━━━━━━━━━━"
+i_trace_tf    = input.string("All", "Apply Trace To", options=["All", "90M", "6H", "7H", "None"], group=g_trace)
+i_trace_o     = input.bool(true, "Show Open", inline="to", group=g_trace)
+i_trace_o_col = input.color(color.new(#000000, 0), "", inline="to", group=g_trace)
+i_trace_o_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="to", group=g_trace)
+
+i_trace_c     = input.bool(false, "Show Close", inline="tc", group=g_trace)
+i_trace_c_col = input.color(color.new(color.gray, 50), "", inline="tc", group=g_trace)
+i_trace_c_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="tc", group=g_trace)
+
+i_trace_h     = input.bool(false, "Show High", inline="th", group=g_trace)
+i_trace_h_col = input.color(color.new(color.gray, 50), "", inline="th", group=g_trace)
+i_trace_h_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="th", group=g_trace)
+
+i_trace_l     = input.bool(false, "Show Low", inline="tl", group=g_trace)
+i_trace_l_col = input.color(color.new(color.gray, 50), "", inline="tl", group=g_trace)
+i_trace_l_sty = input.string("····", "", options=["⎯⎯⎯", "----", "····"], inline="tl", group=g_trace)
+
+string g_90m = "90 Min Colors  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_90m_bull_body   = input.color(color.new(#dbdbdb, 10), 'Bull Body  ', inline='90m_body',   group=g_90m)
+i_90m_bear_body   = input.color(color.new(#000000, 10), 'Bear Body',   inline='90m_body',   group=g_90m)
+i_90m_bull_border = input.color(color.new(#000000, 10), 'Bull Border', inline='90m_border', group=g_90m)
+i_90m_bear_border = input.color(color.new(#000000, 10), 'Bear Border', inline='90m_border', group=g_90m)
+i_90m_bull_wick   = input.color(color.new(#000000, 10), 'Bull Wick  ', inline='90m_wick',   group=g_90m)
+i_90m_bear_wick   = input.color(color.new(#000000, 10), 'Bear Wick',   inline='90m_wick',   group=g_90m)
+
+string g_6h = "6 Hour Colors  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_6h_bull_body   = input.color(color.new(#dbdbdb, 10), 'Bull Body  ', inline='6h_body',   group=g_6h)
+i_6h_bear_body   = input.color(color.new(#000000, 10), 'Bear Body',   inline='6h_body',   group=g_6h)
+i_6h_bull_border = input.color(color.new(#010201, 10), 'Bull Border', inline='6h_border', group=g_6h)
+i_6h_bear_border = input.color(color.new(#000000, 10), 'Bear Border', inline='6h_border', group=g_6h)
+i_6h_bull_wick   = input.color(color.new(#000000, 10), 'Bull Wick  ', inline='6h_wick',   group=g_6h)
+i_6h_bear_wick   = input.color(color.new(#000000, 10), 'Bear Wick',   inline='6h_wick',   group=g_6h)
+
+string g_7h = "7 Hour Colors  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_7h_bull_body   = input.color(color.new(#dbdbdb, 10), 'Bull Body  ', inline='7h_body',   group=g_7h)
+i_7h_bear_body   = input.color(color.new(#000000, 10), 'Bear Body',   inline='7h_body',   group=g_7h)
+i_7h_bull_border = input.color(color.new(#000000, 10), 'Bull Border', inline='7h_border', group=g_7h)
+i_7h_bear_border = input.color(color.new(#000000, 10), 'Bear Border', inline='7h_border', group=g_7h)
+i_7h_bull_wick   = input.color(color.new(#000000, 10), 'Bull Wick  ', inline='7h_wick',   group=g_7h)
+i_7h_bear_wick   = input.color(color.new(#000000, 10), 'Bear Wick',   inline='7h_wick',   group=g_7h)
+
+string g_fvg = "Fair Value Gap & Sweeps  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_fvg_show    = input.bool(true, 'Show Fair Value Gap',    group=g_fvg)
+i_fvg_color   = input.color(color.new(#807d7d, 80), 'FVG Color',           group=g_fvg)
+i_sweep_show  = input.bool(true, 'Show Sweep Lines',       group=g_fvg)
+i_sweep_color = input.color(color.new(#000000, 0),  'Sweep Line Color',    group=g_fvg)
+i_mid_show    = input.bool(true, 'Show Midpoint Lines',    group=g_fvg)
+i_mid_color   = input.color(color.new(#b21a1a, 80), 'Midpoint Line Color', group=g_fvg)
+
+string g_lbl = "Labels  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+i_show_label  = input.bool(true,          'Show TF label',       group=g_lbl)
+i_label_color = input.color(#000000,      'Label color',         group=g_lbl)
+i_label_size  = input.string(size.small, 'Label size', options=[size.tiny, size.small, size.normal, size.large, size.huge], group=g_lbl)
+i_show_timer  = input.bool(true,          'Show time remaining', group=g_lbl)
+i_show_time   = input.bool(false,          'Show candle open time', group=g_lbl)
+i_time_color  = input.color(#000000,      'Open time color',     group=g_lbl)
+
+color transparent = #ffffff00
+
+string g_sess = "Session Alignment 🕒 ━━━━━━━━━━━━━━━━━"
+i_sess_mode = input.string("Auto", "Alignment Mode", options=["Auto", "Manual"], group=g_sess)
+i_daily_hr  = input.int(17, "Manual Open Hour (EST)", minval=0, maxval=23, group=g_sess, tooltip="Only used if Mode is Manual")
+i_daily_min = input.int(0,  "Manual Open Minute", minval=0, maxval=59, group=g_sess)
+
+// ══════════════════════════════════════════════════════════════
+//  RONIN CORRELATION ENGINE
+// ══════════════════════════════════════════════════════════════
+f_get_ticker(string simple_name) => 
+    if simple_name == "DXY"
+        "TVC:DXY"
+    else if simple_name == "US10Y"
+        "TVC:US10Y"
+    else
+        syminfo.prefix + ":" + simple_name
+
+f_get_ronin_correlation() =>
+    string t2 = ""
+    string t3 = ""
+    string t4 = ""
+    bool inv2 = false
+    bool inv3 = false
+    bool inv4 = false
+    
+    string check_sym = syminfo.root != "" ? syminfo.root : syminfo.ticker
+    
+    switch check_sym
+        "XAUUSD" => 
+            t2 := f_get_ticker("XAGUSD"), inv2 := false
+            t3 := f_get_ticker("XAUEUR"), inv3 := false
+            t4 := f_get_ticker("XAUGBP"), inv4 := false
+        "XAUEUR" => 
+            t2 := f_get_ticker("XAUUSD"), inv2 := false
+            t3 := f_get_ticker("XAUGBP"), inv3 := false
+        "XAUGBP" => 
+            t2 := f_get_ticker("XAUUSD"), inv2 := false
+            t3 := f_get_ticker("XAUEUR"), inv3 := false
+        "XAGUSD" => 
+            t2 := f_get_ticker("XAUUSD"), inv2 := false
+            t3 := f_get_ticker("XAUEUR"), inv3 := false
+        "RB" => 
+            t2 := "HO1!", inv2 := false
+            t3 := "CL1!", inv3 := false
+        "HO" => 
+            t2 := "RB1!", inv2 := false
+            t3 := "CL1!", inv3 := false
+        "CL" => 
+            t2 := "HO1!", inv2 := false
+            t3 := "RB1!", inv3 := false
+        "MNQ" => 
+            t2 := "MES1!", inv2 := false
+            t3 := "MYM1!", inv3 := false
+        "MES" => 
+            t2 := "MNQ1!", inv2 := false
+            t3 := "MYM1!", inv3 := false
+        "MYM" => 
+            t2 := "MES1!", inv2 := false
+            t3 := "MNQ1!", inv3 := false
+        "NQ" => 
+            t2 := "ES1!", inv2 := false
+            t3 := "YM1!", inv3 := false
+        "ES" => 
+            t2 := "NQ1!", inv2 := false
+            t3 := "YM1!", inv3 := false
+        "YM" => 
+            t2 := "ES1!", inv2 := false
+            t3 := "NQ1!", inv3 := false
+        "GC" =>
+            t2 := "SI1!", inv2 := false
+            t3 := "NQ1!", inv3 := false
+        "NASDAQ" => 
+            t2 := "PEPPERSTONE:US500", inv2 := false
+            t3 := "PEPPERSTONE:US30",  inv3 := false
+        "NDAQ100" => 
+            t2 := "PEPPERSTONE:US500", inv2 := false
+            t3 := "PEPPERSTONE:US30",  inv3 := false
+        "NAS100" => 
+            t2 := "PEPPERSTONE:US500", inv2 := false
+            t3 := "PEPPERSTONE:US30",  inv3 := false
+        "SPX500" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US30",   inv3 := false
+        "US500" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US30",   inv3 := false
+        "US30" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US500",  inv3 := false
+        "DJI" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US500",  inv3 := false
+        "WALLSTREET" => 
+            t2 := "PEPPERSTONE:NAS100", inv2 := false
+            t3 := "PEPPERSTONE:US500",  inv3 := false
+        "EURUSD" => 
+            t2 := f_get_ticker("GBPUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true 
+        "GBPUSD" => 
+            t2 := f_get_ticker("EURUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true 
+        "AUDUSD" => 
+            t2 := f_get_ticker("NZDUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true
+        "NZDUSD" => 
+            t2 := f_get_ticker("AUDUSD"), inv2 := false
+            t3 := "TVC:DXY",              inv3 := true
+        "USDJPY" => 
+            t2 := "TVC:DXY",              inv2 := false
+        "USDCAD" => 
+            t2 := "TVC:DXY",              inv2 := false
+        "USDCHF" => 
+            t2 := "TVC:DXY",              inv2 := false
+        "EURJPY" => 
+            t2 := f_get_ticker("GBPJPY"), inv2 := false
+        "GBPJPY" => 
+            t2 := f_get_ticker("EURJPY"), inv2 := false
+        "AUDJPY" => 
+            t2 := f_get_ticker("NZDJPY"), inv2 := false
+        "NZDJPY" => 
+            t2 := f_get_ticker("AUDJPY"), inv2 := false
+        "EURAUD" => 
+            t2 := f_get_ticker("GBPAUD"), inv2 := false
+        "GBPAUD" => 
+            t2 := f_get_ticker("EURAUD"), inv2 := false
+        "EURNZD" => 
+            t2 := f_get_ticker("GBPNZD"), inv2 := false
+        "GBPNZD" => 
+            t2 := f_get_ticker("EURNZD"), inv2 := false
+        "EURCAD" => 
+            t2 := f_get_ticker("GBPCAD"), inv2 := false
+        "GBPCAD" => 
+            t2 := f_get_ticker("EURCAD"), inv2 := false
+        "AUDCAD" => 
+            t2 := f_get_ticker("NZDCAD"), inv2 := false
+        "NZDCAD" => 
+            t2 := f_get_ticker("AUDCAD"), inv2 := false
+        "BTCUSDT" =>
+            t2 := f_get_ticker("ETHUSDT"), inv2 := false
+        "ETHUSDT" =>
+            t2 := f_get_ticker("BTCUSDT"), inv2 := false
+            
+    [t2, t3, t4, inv2, inv3, inv4]
+
+var string ticker1 = syminfo.tickerid 
+var string ticker2 = ""
+var string ticker3 = ""
+var string ticker4 = ""
+var bool   inv2    = false
+var bool   inv3    = false
+var bool   inv4    = false
+
+if barstate.isfirst
+    if i_psp_mode == "Auto (Ronin)"
+        [t2, t3, t4, i2, i3, i4] = f_get_ronin_correlation()
+        ticker2 := t2
+        ticker3 := t3
+        ticker4 := t4
+        inv2 := i2
+        inv3 := i3
+        inv4 := i4
+    else
+        ticker2 := i_psp_t2
+        ticker3 := i_psp_t3
+        inv3    := i_psp_inv3
+
+// ══════════════════════════════════════════════════════════════
+//  AUTO-DETECT LOGIC (BROKER AGNOSTIC)
+// ══════════════════════════════════════════════════════════════
+int current_d_time = time("D")
+int auto_hr  = not na(current_d_time) ? hour(current_d_time, "America/New_York") : 17
+int auto_min = not na(current_d_time) ? minute(current_d_time, "America/New_York") : 0
+
+int eff_hr  = i_sess_mode == "Auto" ? auto_hr : i_daily_hr
+int eff_min = i_sess_mode == "Auto" ? auto_min : i_daily_min
+
+// ══════════════════════════════════════════════════════════════
+//  DYNAMIC LOWER TIMEFRAME ARRAY AGGREGATOR
+// ══════════════════════════════════════════════════════════════
+string auto_base_tf = timeframe.in_seconds() < 900 ? timeframe.period : "15"
+
+// Base Ticker Arrays
+var array<float> g_o15 = array.new<float>()
+var array<float> g_h15 = array.new<float>()
+var array<float> g_l15 = array.new<float>()
+var array<float> g_c15 = array.new<float>()
+var array<int>   g_t15 = array.new<int>()
+
+// Correlated Ticker Arrays (Only O/C needed for PSP)
+var array<float> g_o2 = array.new<float>()
+var array<float> g_c2 = array.new<float>()
+var array<int>   g_t2 = array.new<int>()
+
+var array<float> g_o3 = array.new<float>()
+var array<float> g_c3 = array.new<float>()
+var array<int>   g_t3 = array.new<int>()
+
+var array<float> g_o4 = array.new<float>()
+var array<float> g_c4 = array.new<float>()
+var array<int>   g_t4 = array.new<int>()
+
+[o15, h15, l15, c15, t15] = request.security_lower_tf(syminfo.tickerid, auto_base_tf, [open, high, low, close, time])
+[o15_2, c15_2, t15_2]     = request.security_lower_tf(ticker2 != "" ? ticker2 : syminfo.tickerid, auto_base_tf, [open, close, time], ignore_invalid_symbol=true)
+[o15_3, c15_3, t15_3]     = request.security_lower_tf(ticker3 != "" ? ticker3 : syminfo.tickerid, auto_base_tf, [open, close, time], ignore_invalid_symbol=true)
+[o15_4, c15_4, t15_4]     = request.security_lower_tf(ticker4 != "" ? ticker4 : syminfo.tickerid, auto_base_tf, [open, close, time], ignore_invalid_symbol=true)
+
+f_push_arrays(arr_src, arr_dst) =>
+    if array.size(arr_src) > 0
+        for i = 0 to array.size(arr_src) - 1
+            array.push(arr_dst, array.get(arr_src, i))
+
+f_push_arrays(o15, g_o15), f_push_arrays(h15, g_h15), f_push_arrays(l15, g_l15), f_push_arrays(c15, g_c15), f_push_arrays(t15, g_t15)
+if ticker2 != ""
+    f_push_arrays(o15_2, g_o2), f_push_arrays(c15_2, g_c2), f_push_arrays(t15_2, g_t2)
+if ticker3 != ""
+    f_push_arrays(o15_3, g_o3), f_push_arrays(c15_3, g_c3), f_push_arrays(t15_3, g_t3)
+if ticker4 != ""
+    f_push_arrays(o15_4, g_o4), f_push_arrays(c15_4, g_c4), f_push_arrays(t15_4, g_t4)
+
+f_clip_arrays(arr) =>
+    int max_bars = 5000 
+    if array.size(arr) > max_bars
+        int excess = array.size(arr) - max_bars
+        for i = 1 to excess
+            array.shift(arr)
+
+f_clip_arrays(g_o15), f_clip_arrays(g_h15), f_clip_arrays(g_l15), f_clip_arrays(g_c15), f_clip_arrays(g_t15)
+f_clip_arrays(g_o2), f_clip_arrays(g_c2), f_clip_arrays(g_t2)
+f_clip_arrays(g_o3), f_clip_arrays(g_c3), f_clip_arrays(g_t3)
+f_clip_arrays(g_o4), f_clip_arrays(g_c4), f_clip_arrays(g_t4)
+
+f_get_custom_htf(int target_mins, array<int> arr_t, array<float> arr_o, array<float> arr_h, array<float> arr_l, array<float> arr_c) =>
+    array<float> out_o = array.new<float>()
+    array<float> out_h = array.new<float>()
+    array<float> out_l = array.new<float>()
+    array<float> out_c = array.new<float>()
+    array<int>   out_t = array.new<int>()
+    
+    int sz = array.size(arr_t)
+    if sz > 0
+        int last_htf_open = -1
+        float cur_o = na, float cur_h = na, float cur_l = na, float cur_c = na
+        int cur_t = na
+        
+        for i = sz - 1 to 0
+            int t = array.get(arr_t, i)
+            int h_ny = hour(t, "America/New_York")
+            int m_ny = minute(t, "America/New_York")
+            
+            int elapsed_mins_today = h_ny * 60 + m_ny
+            int anchor_mins_today = eff_hr * 60 + eff_min
+            
+            int shift_mins = elapsed_mins_today - anchor_mins_today
+            if shift_mins < 0
+                shift_mins += 1440
+                
+            int htf_open_time = t - ((shift_mins % target_mins) * 60000)
+            
+            if htf_open_time != last_htf_open
+                if last_htf_open != -1
+                    array.push(out_o, cur_o), array.push(out_h, cur_h), array.push(out_l, cur_l), array.push(out_c, cur_c), array.push(out_t, cur_t)
+                    if array.size(out_o) >= 5
+                        break
+                        
+                last_htf_open := htf_open_time
+                cur_c := array.get(arr_c, i), cur_h := array.get(arr_h, i), cur_l := array.get(arr_l, i), cur_o := array.get(arr_o, i), cur_t := htf_open_time
+            else
+                cur_h := math.max(cur_h, array.get(arr_h, i)), cur_l := math.min(cur_l, array.get(arr_l, i)), cur_o := array.get(arr_o, i)
+                
+        if array.size(out_o) < 5 and last_htf_open != -1
+            array.push(out_o, cur_o), array.push(out_h, cur_h), array.push(out_l, cur_l), array.push(out_c, cur_c), array.push(out_t, cur_t)
+            
+    while array.size(out_o) < 5
+        array.push(out_o, na), array.push(out_h, na), array.push(out_l, na), array.push(out_c, na), array.push(out_t, na)
+        
+    [out_o, out_h, out_l, out_c, out_t]
+
+f_get_custom_htf_oc(int target_mins, array<int> arr_t, array<float> arr_o, array<float> arr_c) =>
+    array<float> out_o = array.new<float>()
+    array<float> out_c = array.new<float>()
+    
+    int sz = array.size(arr_t)
+    if sz > 0
+        int last_htf_open = -1
+        float cur_o = na, float cur_c = na
+        for i = sz - 1 to 0
+            int t = array.get(arr_t, i)
+            int h_ny = hour(t, "America/New_York"), m_ny = minute(t, "America/New_York")
+            int shift_mins = (h_ny * 60 + m_ny) - (eff_hr * 60 + eff_min)
+            if shift_mins < 0
+                shift_mins += 1440
+            int htf_open_time = t - ((shift_mins % target_mins) * 60000)
+
+            if htf_open_time != last_htf_open
+                if last_htf_open != -1
+                    array.push(out_o, cur_o), array.push(out_c, cur_c)
+                    if array.size(out_o) >= 5
+                        break
+                last_htf_open := htf_open_time
+                cur_c := array.get(arr_c, i), cur_o := array.get(arr_o, i)
+            else
+                cur_o := array.get(arr_o, i)
+                
+        if array.size(out_o) < 5 and last_htf_open != -1
+            array.push(out_o, cur_o), array.push(out_c, cur_c)
+            
+    while array.size(out_o) < 5
+        array.push(out_o, na), array.push(out_c, na)
+    [out_o, out_c]
+
+// ══════════════════════════════════════════════════════════════
+//  PSP CALCULATION ENGINE
+// ══════════════════════════════════════════════════════════════
+f_calc_psp(array<float> os, array<float> hs, array<float> ls, array<float> cs, array<float> o2, array<float> c2, array<float> o3, array<float> c3, array<float> o4, array<float> c4) =>
+    array<int> psp = array.new<int>(5, 0)
+    int left = i_psp_left
+    int right = i_psp_right
+
+    for i = right to (4 - left)
+        if na(os.get(i))
+            continue
+
+        bool is_ph = true
+        for j = 1 to left
+            if hs.get(i) <= hs.get(i + j)
+                is_ph := false
+        for j = 1 to right
+            if hs.get(i) <= hs.get(i - j)
+                is_ph := false
+
+        bool is_pl = true
+        for j = 1 to left
+            if ls.get(i) >= ls.get(i + j)
+                is_pl := false
+        for j = 1 to right
+            if ls.get(i) >= ls.get(i - j)
+                is_pl := false
+
+        if is_ph or is_pl
+            bool b1 = cs.get(i) >= os.get(i)
+            bool crack = false
+
+            if ticker2 != "" and array.size(o2) > i and not na(o2.get(i))
+                bool b2 = (c2.get(i) >= o2.get(i))
+                if inv2
+                    b2 := not b2
+                if b1 != b2
+                    crack := true
+
+            if ticker3 != "" and array.size(o3) > i and not na(o3.get(i))
+                bool b3 = (c3.get(i) >= o3.get(i))
+                if inv3
+                    b3 := not b3
+                if b1 != b3
+                    crack := true
+
+            if ticker4 != "" and array.size(o4) > i and not na(o4.get(i))
+                bool b4 = (c4.get(i) >= o4.get(i))
+                if inv4
+                    b4 := not b4
+                if b1 != b4
+                    crack := true
+
+            if crack
+                if is_ph
+                    psp.set(i, 1) // 1 = psp bear color
+                if is_pl
+                    psp.set(i, 2) // 2 = psp bull color
+    psp
+
+// ══════════════════════════════════════════════════════════════
+//  MAP VARIABLES TO DRAW LOGIC
+// ══════════════════════════════════════════════════════════════
+[o90_arr, h90_arr, l90_arr, c90_arr, t90_arr] = f_get_custom_htf(90, g_t15, g_o15, g_h15, g_l15, g_c15)
+[o90_t2, c90_t2] = f_get_custom_htf_oc(90, g_t2, g_o2, g_c2)
+[o90_t3, c90_t3] = f_get_custom_htf_oc(90, g_t3, g_o3, g_c3)
+[o90_t4, c90_t4] = f_get_custom_htf_oc(90, g_t4, g_o4, g_c4)
+array<int> psp_90 = i_psp_show ? f_calc_psp(o90_arr, h90_arr, l90_arr, c90_arr, o90_t2, c90_t2, o90_t3, c90_t3, o90_t4, c90_t4) : array.new<int>(5, 0)
+
+[o6h_arr, h6h_arr, l6h_arr, c6h_arr, t6h_arr] = f_get_custom_htf(360, g_t15, g_o15, g_h15, g_l15, g_c15)
+[o6h_t2, c6h_t2] = f_get_custom_htf_oc(360, g_t2, g_o2, g_c2)
+[o6h_t3, c6h_t3] = f_get_custom_htf_oc(360, g_t3, g_o3, g_c3)
+[o6h_t4, c6h_t4] = f_get_custom_htf_oc(360, g_t4, g_o4, g_c4)
+array<int> psp_6h = i_psp_show ? f_calc_psp(o6h_arr, h6h_arr, l6h_arr, c6h_arr, o6h_t2, c6h_t2, o6h_t3, c6h_t3, o6h_t4, c6h_t4) : array.new<int>(5, 0)
+
+[o7h_arr, h7h_arr, l7h_arr, c7h_arr, t7h_arr] = f_get_custom_htf(420, g_t15, g_o15, g_h15, g_l15, g_c15)
+[o7h_t2, c7h_t2] = f_get_custom_htf_oc(420, g_t2, g_o2, g_c2)
+[o7h_t3, c7h_t3] = f_get_custom_htf_oc(420, g_t3, g_o3, g_c3)
+[o7h_t4, c7h_t4] = f_get_custom_htf_oc(420, g_t4, g_o4, g_c4)
+array<int> psp_7h = i_psp_show ? f_calc_psp(o7h_arr, h7h_arr, l7h_arr, c7h_arr, o7h_t2, c7h_t2, o7h_t3, c7h_t3, o7h_t4, c7h_t4) : array.new<int>(5, 0)
+
+o90_0 = array.get(o90_arr, 0), h90_0 = array.get(h90_arr, 0), l90_0 = array.get(l90_arr, 0), c90_0 = array.get(c90_arr, 0), t90_0 = array.get(t90_arr, 0)
+o90_1 = array.get(o90_arr, 1), h90_1 = array.get(h90_arr, 1), l90_1 = array.get(l90_arr, 1), c90_1 = array.get(c90_arr, 1), t90_1 = array.get(t90_arr, 1)
+o90_2 = array.get(o90_arr, 2), h90_2 = array.get(h90_arr, 2), l90_2 = array.get(l90_arr, 2), c90_2 = array.get(c90_arr, 2), t90_2 = array.get(t90_arr, 2)
+o90_3 = array.get(o90_arr, 3), h90_3 = array.get(h90_arr, 3), l90_3 = array.get(l90_arr, 3), c90_3 = array.get(c90_arr, 3), t90_3 = array.get(t90_arr, 3)
+o90_4 = array.get(o90_arr, 4), h90_4 = array.get(h90_arr, 4), l90_4 = array.get(l90_arr, 4), c90_4 = array.get(c90_arr, 4), t90_4 = array.get(t90_arr, 4)
+
+o6h_0 = array.get(o6h_arr, 0), h6h_0 = array.get(h6h_arr, 0), l6h_0 = array.get(l6h_arr, 0), c6h_0 = array.get(c6h_arr, 0), t6h_0 = array.get(t6h_arr, 0)
+o6h_1 = array.get(o6h_arr, 1), h6h_1 = array.get(h6h_arr, 1), l6h_1 = array.get(l6h_arr, 1), c6h_1 = array.get(c6h_arr, 1), t6h_1 = array.get(t6h_arr, 1)
+o6h_2 = array.get(o6h_arr, 2), h6h_2 = array.get(h6h_arr, 2), l6h_2 = array.get(l6h_arr, 2), c6h_2 = array.get(c6h_arr, 2), t6h_2 = array.get(t6h_arr, 2)
+o6h_3 = array.get(o6h_arr, 3), h6h_3 = array.get(h6h_arr, 3), l6h_3 = array.get(l6h_arr, 3), c6h_3 = array.get(c6h_arr, 3), t6h_3 = array.get(t6h_arr, 3)
+o6h_4 = array.get(o6h_arr, 4), h6h_4 = array.get(h6h_arr, 4), l6h_4 = array.get(l6h_arr, 4), c6h_4 = array.get(c6h_arr, 4), t6h_4 = array.get(t6h_arr, 4)
+
+o7h_0 = array.get(o7h_arr, 0), h7h_0 = array.get(h7h_arr, 0), l7h_0 = array.get(l7h_arr, 0), c7h_0 = array.get(c7h_arr, 0), t7h_0 = array.get(t7h_arr, 0)
+o7h_1 = array.get(o7h_arr, 1), h7h_1 = array.get(h7h_arr, 1), l7h_1 = array.get(l7h_arr, 1), c7h_1 = array.get(c7h_arr, 1), t7h_1 = array.get(t7h_arr, 1)
+o7h_2 = array.get(o7h_arr, 2), h7h_2 = array.get(h7h_arr, 2), l7h_2 = array.get(l7h_arr, 2), c7h_2 = array.get(c7h_arr, 2), t7h_2 = array.get(t7h_arr, 2)
+o7h_3 = array.get(o7h_arr, 3), h7h_3 = array.get(h7h_arr, 3), l7h_3 = array.get(l7h_arr, 3), c7h_3 = array.get(c7h_arr, 3), t7h_3 = array.get(t7h_arr, 3)
+o7h_4 = array.get(o7h_arr, 4), h7h_4 = array.get(h7h_arr, 4), l7h_4 = array.get(l7h_arr, 4), c7h_4 = array.get(c7h_arr, 4), t7h_4 = array.get(t7h_arr, 4)
+
+// ══════════════════════════════════════════════════════════════
+//  TRACE START INDEX TRACKERS (Prevents xloc error)
+// ══════════════════════════════════════════════════════════════
+var int idx_90m = bar_index
+if t90_0 != t90_0[1]
+    idx_90m := bar_index
+
+var int idx_6h = bar_index
+if t6h_0 != t6h_0[1]
+    idx_6h := bar_index
+
+var int idx_7h = bar_index
+if t7h_0 != t7h_0[1]
+    idx_7h := bar_index
+
+// ══════════════════════════════════════════════════════════════
+//  DRAWING STORAGE & TRACES
+// ══════════════════════════════════════════════════════════════
+var array<box>   g_bodies    = array.new<box>()
+var array<line>  g_wicks_up  = array.new<line>()
+var array<line>  g_wicks_dn  = array.new<line>()
+var array<box>   g_fvgs      = array.new<box>()
+var array<line>  g_sweeps    = array.new<line>()
+var array<line>  g_mids      = array.new<line>()
+var array<label> g_timelabels = array.new<label>()
+var array<line>  g_traces    = array.new<line>()
+
+var label g_lbl_90m = na
+var label g_lbl_6h  = na
+var label g_lbl_7h  = na
+
+// ══════════════════════════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════════════════════════
+isValidHTF(int target_mins) =>
+    timeframe.in_seconds() <= target_mins * 60
+
+calcMidpoint(float h, float l, float o, float c) =>
+    float lh = math.log(h)
+    float ll = math.log(l)
+    float lo = math.log(o)
+    float lc = math.log(c)
+    float uw = lh - math.max(lo, lc)
+    float lw = math.min(lo, lc) - ll
+    float bs = math.abs(lc - lo)
+    float lmid = math.max(uw, lw) > bs ? (uw > lw ? lh - uw / 2 : ll + lw / 2) : (lh + ll) / 2
+    math.exp(lmid)
+
+formatTime(int t) =>
+    str.format_time(t, "HH:mm", "America/New_York")
+
+remainingCustomTime(int openTime, int target_mins) =>
+    if barstate.isrealtime and not na(openTime)
+        int closeTime = openTime + (target_mins * 60000)
+        int rem = math.max(0, int((closeTime - timenow) / 1000))
+        if rem == 0
+            '00:00'
+        else
+            int d = int(rem / 86400)
+            int h = int((rem - d * 86400) / 3600)
+            int m = int((rem - d * 86400 - h * 3600) / 60)
+            int s = int(rem - d * 86400 - h * 3600 - m * 60)
+            string r = str.tostring(s, '00')
+            if m > 0 or h > 0 or d > 0
+                r := str.tostring(m, '00') + ':' + r
+            if h > 0 or d > 0
+                r := str.tostring(h, '00') + ':' + r
+            if d > 0
+                r := str.tostring(d) + 'D ' + r
+            r
+    else
+        'n/a'
+
+get_line_style2(string s) =>
+    s == "----" ? line.style_dashed : s == "····" ? line.style_dotted : line.style_solid
+
+f_draw_traces(int start_idx, float o, float h, float l, float c, int newest_x1, int newest_xm, string tf_name) =>
+    if i_trace_tf == "All" or i_trace_tf == tf_name
+        if i_trace_o
+            g_traces.push(line.new(start_idx, o, newest_x1, o, color=i_trace_o_col, style=get_line_style2(i_trace_o_sty)))
+        if i_trace_c
+            g_traces.push(line.new(start_idx, c, newest_x1, c, color=i_trace_c_col, style=get_line_style2(i_trace_c_sty)))
+        if i_trace_h
+            g_traces.push(line.new(start_idx, h, newest_xm, h, color=i_trace_h_col, style=get_line_style2(i_trace_h_sty)))
+        if i_trace_l
+            g_traces.push(line.new(start_idx, l, newest_xm, l, color=i_trace_l_col, style=get_line_style2(i_trace_l_sty)))
+
+// ══════════════════════════════════════════════════════════════
+//  DELETE ALL
+// ══════════════════════════════════════════════════════════════
+deleteAll() =>
+    int i = 0
+    while i < g_bodies.size()
+        box.delete(g_bodies.get(i)), i += 1
+    g_bodies.clear(), i := 0
+    while i < g_wicks_up.size()
+        line.delete(g_wicks_up.get(i)), i += 1
+    g_wicks_up.clear(), i := 0
+    while i < g_wicks_dn.size()
+        line.delete(g_wicks_dn.get(i)), i += 1
+    g_wicks_dn.clear(), i := 0
+    while i < g_fvgs.size()
+        box.delete(g_fvgs.get(i)), i += 1
+    g_fvgs.clear(), i := 0
+    while i < g_sweeps.size()
+        line.delete(g_sweeps.get(i)), i += 1
+    g_sweeps.clear(), i := 0
+    while i < g_mids.size()
+        line.delete(g_mids.get(i)), i += 1
+    g_mids.clear(), i := 0
+    while i < g_timelabels.size()
+        label.delete(g_timelabels.get(i)), i += 1
+    g_timelabels.clear()
+    while g_traces.size() > 0
+        line.delete(g_traces.pop())
+
+// ══════════════════════════════════════════════════════════════
+//  DRAW CANDLE
+// ══════════════════════════════════════════════════════════════
+drawCandle(float o, float h, float l, float c, int t, int slot, int startOff, TFColors col, int psp_status) =>
+    int x1 = bar_index + startOff + slot * (i_width + i_buffer)
+    int x2 = x1 + i_width
+    int xm = x1 + i_width / 2
+    bool bull = c >= o
+    
+    color b_col = bull ? col.bull_body : col.bear_body
+    if psp_status == 1
+        b_col := i_psp_bear_col
+    else if psp_status == 2
+        b_col := i_psp_bull_col
+        
+    box bd = box.new(x1, math.max(o,c), x2, math.min(o,c),
+             bull ? col.bull_border : col.bear_border, 1,
+             bgcolor = b_col)
+    line wu = line.new(xm, h, xm, math.max(o,c), color = bull ? col.bull_wick : col.bear_wick)
+    line wd = line.new(xm, math.min(o,c), xm, l,  color = bull ? col.bull_wick : col.bear_wick)
+    g_bodies.push(bd)
+    g_wicks_up.push(wu)
+    g_wicks_dn.push(wd)
+    
+    if i_show_time and not na(t)
+        label tl = label.new(xm, l, formatTime(t),
+                     color=transparent, textcolor=i_time_color,
+                     style=label.style_label_up, size=size.normal,
+                     text_font_family=font.family_monospace)
+        g_timelabels.push(tl)
+    [x1, x2, h, l]
+
+// ══════════════════════════════════════════════════════════════
+//  DRAW BLOCK
+// ══════════════════════════════════════════════════════════════
+drawBlock(
+     float o0, float h0, float l0, float c0, int t0,
+     float o1, float h1, float l1, float c1, int t1,
+     float o2, float h2, float l2, float c2, int t2,
+     float o3, float h3, float l3, float c3, int t3,
+     float o4, float h4, float l4, float c4, int t4,
+     array<int> psp_arr, int startOff, int n, TFColors col) =>
+
+    os = array.from(o4, o3, o2, o1, o0)
+    hs = array.from(h4, h3, h2, h1, h0)
+    ls = array.from(l4, l3, l2, l1, l0)
+    cs = array.from(c4, c3, c2, c1, c0)
+    ts = array.from(t4, t3, t2, t1, t0)
+
+    int si = 5 - n
+
+    xs1  = array.new<int>()
+    xs2  = array.new<int>()
+    chs  = array.new<float>()
+    cls  = array.new<float>()
+    cos  = array.new<float>()
+    ccs  = array.new<float>()
+    float blockHigh = 0.0
+
+    int slot = 0
+    while slot < n
+        int idx = si + slot
+        float co = os.get(idx)
+        float ch = hs.get(idx)
+        float cl = ls.get(idx)
+        float cc = cs.get(idx)
+        int   ct = ts.get(idx)
+        
+        int p_idx = 4 - idx // Match array indexing for PSP
+        int psp_status = psp_arr.get(p_idx)
+        
+        if not na(co)
+            [x1, x2, cvh, cvl] = drawCandle(co, ch, cl, cc, ct, slot, startOff, col, psp_status)
+            xs1.push(x1)
+            xs2.push(x2)
+            chs.push(ch)
+            cls.push(cl)
+            cos.push(co)
+            ccs.push(cc)
+            if ch > blockHigh
+                blockHigh := ch
+        slot += 1
+
+    int drawn = xs1.size()
+
+    if i_mid_show and drawn >= 2
+        int i = 0
+        while i < drawn - 1
+            float mid = calcMidpoint(chs.get(i), cls.get(i), cos.get(i), ccs.get(i))
+            int mx1 = xs1.get(i)   + i_width / 2
+            int mx2 = xs1.get(i+1) + i_width / 2
+            g_mids.push(line.new(mx1, mid, mx2, mid, color=i_mid_color, style=line.style_dotted, width=1))
+            i += 1
+
+    if i_sweep_show and drawn >= 2
+        int i = 0
+        while i < drawn - 1
+            float ph = chs.get(i)
+            float pl = cls.get(i)
+            float nh = chs.get(i+1)
+            float nl = cls.get(i+1)
+            float nc = ccs.get(i+1)
+            int sx1 = xs1.get(i)   + i_width / 2
+            int sx2 = xs2.get(i+1)
+            if nh > ph and nc < ph
+                g_sweeps.push(line.new(sx1, ph, sx2, ph, color=i_sweep_color, width=1))
+            if nl < pl and nc > pl
+                g_sweeps.push(line.new(sx1, pl, sx2, pl, color=i_sweep_color, width=1))
+            i += 1
+
+    if i_fvg_show and drawn >= 3
+        int i = 0
+        while i < drawn - 2
+            float h1f = chs.get(i)
+            float l1f = cls.get(i)
+            float h3f = chs.get(i+2)
+            float l3f = cls.get(i+2)
+            int fx1 = xs1.get(i)
+            int fx2 = xs2.get(i+2)
+            if l1f > h3f
+                g_fvgs.push(box.new(fx1, l1f, fx2, h3f, bgcolor=i_fvg_color, border_color=transparent))
+            if h1f < l3f
+                g_fvgs.push(box.new(fx1, l3f, fx2, h1f, bgcolor=i_fvg_color, border_color=transparent))
+            i += 1
+
+    int totalW  = n * i_width + math.max(0, n-1) * i_buffer
+    int centerX = bar_index + startOff + totalW / 2
+    [centerX, blockHigh, startOff + totalW + i_htfgap]
+
+// ══════════════════════════════════════════════════════════════
+//  COLOR OBJECTS
+// ══════════════════════════════════════════════════════════════
+TFColors col_90m = TFColors.new(i_90m_bull_body,i_90m_bear_body,i_90m_bull_border,i_90m_bear_border,i_90m_bull_wick,i_90m_bear_wick)
+TFColors col_6h  = TFColors.new(i_6h_bull_body, i_6h_bear_body, i_6h_bull_border, i_6h_bear_border, i_6h_bull_wick, i_6h_bear_wick)
+TFColors col_7h  = TFColors.new(i_7h_bull_body, i_7h_bear_body, i_7h_bull_border, i_7h_bear_border, i_7h_bull_wick, i_7h_bear_wick)
+
+// ══════════════════════════════════════════════════════════════
+//  MAIN
+// ══════════════════════════════════════════════════════════════
+if barstate.islast
+    deleteAll()
+    int n   = math.min(i_maxshow, 5)
+    int off = i_offset
+
+    if i_show_90m and isValidHTF(90)
+        [cx, top, nextOff] = drawBlock(
+             o90_0,h90_0,l90_0,c90_0,t90_0,
+             o90_1,h90_1,l90_1,c90_1,t90_1,
+             o90_2,h90_2,l90_2,c90_2,t90_2,
+             o90_3,h90_3,l90_3,c90_3,t90_3,
+             o90_4,h90_4,l90_4,c90_4,t90_4,
+             psp_90, off, n, col_90m)
+        
+        int newest_x1_90m = bar_index + off + (n - 1) * (i_width + i_buffer)
+        f_draw_traces(idx_90m, o90_0, h90_0, l90_0, c90_0, newest_x1_90m, newest_x1_90m + i_width / 2, "90M")
+
+        if i_show_label
+            string txt = 'TF: 90M' + (i_show_timer ? '\n[' + remainingCustomTime(t90_0, 90) + ']' : '')
+            if na(g_lbl_90m)
+                g_lbl_90m := label.new(cx, top, txt, color=transparent, textcolor=i_label_color, style=label.style_label_down, size=i_label_size, text_font_family=font.family_monospace)
+            else
+                label.set_xy(g_lbl_90m, cx, top)
+                label.set_text(g_lbl_90m, txt)
+        off := nextOff
+
+    if i_show_6h and isValidHTF(360)
+        [cx, top, nextOff] = drawBlock(
+             o6h_0,h6h_0,l6h_0,c6h_0,t6h_0,
+             o6h_1,h6h_1,l6h_1,c6h_1,t6h_1,
+             o6h_2,h6h_2,l6h_2,c6h_2,t6h_2,
+             o6h_3,h6h_3,l6h_3,c6h_3,t6h_3,
+             o6h_4,h6h_4,l6h_4,c6h_4,t6h_4,
+             psp_6h, off, n, col_6h)
+             
+        int newest_x1_6h = bar_index + off + (n - 1) * (i_width + i_buffer)
+        f_draw_traces(idx_6h, o6h_0, h6h_0, l6h_0, c6h_0, newest_x1_6h, newest_x1_6h + i_width / 2, "6H")
+
+        if i_show_label
+            string txt = 'TF: 6H' + (i_show_timer ? '\n[' + remainingCustomTime(t6h_0, 360) + ']' : '')
+            if na(g_lbl_6h)
+                g_lbl_6h := label.new(cx, top, txt, color=transparent, textcolor=i_label_color, style=label.style_label_down, size=i_label_size, text_font_family=font.family_monospace)
+            else
+                label.set_xy(g_lbl_6h, cx, top)
+                label.set_text(g_lbl_6h, txt)
+        off := nextOff
+
+    if i_show_7h and isValidHTF(420)
+        [cx, top, nextOff] = drawBlock(
+             o7h_0,h7h_0,l7h_0,c7h_0,t7h_0,
+             o7h_1,h7h_1,l7h_1,c7h_1,t7h_1,
+             o7h_2,h7h_2,l7h_2,c7h_2,t7h_2,
+             o7h_3,h7h_3,l7h_3,c7h_3,t7h_3,
+             o7h_4,h7h_4,l7h_4,c7h_4,t7h_4,
+             psp_7h, off, n, col_7h)
+             
+        int newest_x1_7h = bar_index + off + (n - 1) * (i_width + i_buffer)
+        f_draw_traces(idx_7h, o7h_0, h7h_0, l7h_0, c7h_0, newest_x1_7h, newest_x1_7h + i_width / 2, "7H")
+
+        if i_show_label
+            string txt = 'TF: 7H' + (i_show_timer ? '\n[' + remainingCustomTime(t7h_0, 420) + ']' : '')
+            if na(g_lbl_7h)
+                g_lbl_7h := label.new(cx, top, txt, color=transparent, textcolor=i_label_color, style=label.style_label_down, size=i_label_size, text_font_family=font.family_monospace)
+            else
+                label.set_xy(g_lbl_7h, cx, top)
+                label.set_text(g_lbl_7h, txt)
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © boitoki
+
+
+
+import boitoki/AwesomeColor/9 as ac
+import boitoki/Utilities/11 as util
+
+///////////////
+// Groups
+///////////////
+g0                      = '// GENERAL //'
+g1_01                   = '// ♯1 SESSION //'
+g1_02                   = '// ♯2 SESSION //'
+g1_03                   = '// ♯3 SESSION //'
+g1_04                   = '// ♯4 SESSION //'
+g4                      = '// BOX //'
+g6                      = '// LABELS //'
+g5                      = '// OPENING RANGE //'
+g7                      = '// FIBONACCI LEVELS //'
+g8                      = '// OPTIONS //'
+g11                     = '// CANDLE //'
+g10                     = '// ALERTS VISUALISED //'
+g12                     = '// INFORMATION //'
+
+///////////////
+// Defined
+///////////////
+MAX_BARS                = 500
+
+option_yes              = 'Yes'
+option_no               = '× No'
+option_hide             = '× Hide'
+option_border_style1    = '────'
+option_border_style2    = '- - - - - -'
+option_border_style3    = '•••••••••'
+option_chart_1          = 'Bar color'
+option_chart_2          = 'Candles'
+option_opr_label1       = 'High・Low'
+option_opr_label2       = 'Buy・Sell'
+option_opr_label_none   = 'None'
+option_candle_color1    = 'Session color'
+option_candle_color2    = 'Red • Green'
+
+fmt_price               = '{0,number,#.#####}'
+fmt_pips                = '{0,number,#.#}'
+
+icon_separator          = ' • '
+
+color_text              = color.new(color.white, 0)
+TRANSPARENT             = color.new(color.black, 100)
+
+///////////////
+// Methods
+///////////////
+method clear (array<string> id, int _min = 0) =>
+    if array.size(id) > _min
+        array.pop(id)
+
+method clear (array<float> id, int _min = 0) =>
+    if array.size(id) > _min
+        array.pop(id)
+
+///////////////
+// Types
+///////////////
+// OHLC
+type OHLC
+    float open
+    float high
+    float low
+    float close
+    float hl
+
+// Dot
+type Dot
+    int x
+    float y
+    string t = ''
+    color c
+
+method create(Dot this) =>
+    label.new(this.x, this.y, this.t, style=label.style_label_center, color=TRANSPARENT, textcolor=this.c, size=size.small)
+
+// Candle
+type Candle
+    box[] body
+    line[] wick
+
+method create(Candle this) =>
+    this.body := array.new<box>()
+    this.wick := array.new<line>()
+    this
+
+type State
+    string extend_style
+    bool show_fibs
+    bool show_op
+
+method is_extended (State this) =>
+    this.extend_style != option_no
+
+
+// OpeningRange
+type OpeningRange
+    float top
+    float btm
+    float avg
+    float R1
+    float R2
+    float S1
+    float S2
+    int total_count = 0
+    int reached_count = 0
+    int reached_R1_count = 0
+    int reached_R2_count = 0
+    int reached_S1_count = 0
+    int reached_S2_count = 0
+
+// Data
+type Session
+    string sess
+    string tz
+    string name
+    color colour
+
+    float[] price_ranges
+    float price_range_avg
+    box[] boxes
+    line[] lines
+    label[] labels
+    line[] oclines
+    box[] ocboxes
+    label[] oc_labels
+    box[] opr_boxes
+    line[] opr_lines
+    linefill[] opr_linefills
+    label[] opr_labels
+    line[] fib
+    int session
+    bool is_extended
+    bool in_session
+
+    Candle candle
+    OHLC ohlc
+    State state
+    OpeningRange op
+
+	int value = na // cached session time for this bar
+	int start_bar = 0 // bar_index of the session start
+
+method create (Session this, string _extend, bool _show_fib, bool _show_op) =>
+    this.boxes := array.new<box>()
+    this.lines := array.new<line>()
+    this.labels := array.new<label>()
+    this.oclines := array.new<line>()
+    this.ocboxes := array.new<box>()
+    this.oc_labels := array.new<label>()
+    this.opr_boxes := array.new<box>()
+    this.opr_lines := array.new<line>()
+    this.opr_linefills := array.new<linefill>()
+    this.opr_labels := array.new<label>()
+    this.fib := array.new<line>()
+    this.price_ranges := array.new<float>()
+
+    this.state := State.new(_extend, _show_fib, _show_op)
+    this.candle := Candle.new().create()
+    this.ohlc := OHLC.new()
+    this.op := OpeningRange.new()
+
+    this.is_extended := this.state.is_extended()
+
+    this
+
+method update (Session this) =>
+    t = time(timeframe.period, this.sess, this.tz)
+    this.value := t
+    if not na(t) and na(t[1])
+        this.start_bar := bar_index
+
+method get_bars_from_start(Session this) =>
+    bar_index - this.start_bar + 1
+
+method session (Session this) =>
+    this.value
+
+method add (Session this, range_price, length = 50) =>
+    this.price_ranges.unshift(range_price)
+    this.price_ranges.clear(length)
+    this.price_range_avg := array.avg(this.price_ranges)
+
+///////////////
+// Functions
+///////////////
+f_get_time_by_bar (bar_count) => timeframe.multiplier * bar_count * 60 * 1000
+
+f_border_style (_style) =>
+    switch _style
+        option_border_style1 => line.style_solid
+        option_border_style2 => line.style_dashed
+        option_border_style3 => line.style_dotted
+        => _style
+
+f_get_label_position (_y, _side) =>
+    switch _y
+        'top'    => _side == 'outside' ? label.style_label_lower_left : label.style_label_upper_left
+        'bottom' => _side == 'outside' ? label.style_label_upper_left : label.style_label_lower_left
+
+f_get_started(_session) => na(_session[1]) and bool(_session)
+
+f_get_ended(_session) => na(_session) and bool(_session[1])
+
+f_message_limit_bars (_v) => '⚠️ This box\'s right position exceeds 500 bars(' + str.tostring(_v) + '). This box is not displayed correctly.'
+
+f_set_line_x1 (_line, _x) =>
+    if (line.get_x1(_line) != _x)
+        line.set_x1(_line, _x)
+
+f_set_line_x2 (_line, _x) =>
+    if (line.get_x2(_line) != _x)
+        line.set_x2(_line, _x)
+
+f_set_box_right (_box, _x) =>
+    if box.get_right(_box) != _x
+        box.set_right(_box, _x)
+
+///////////////
+// Inputs
+///////////////
+// Timezone
+i_tz                    = input.string('GMT-4', title='Timezone', options=['GMT-11', 'GMT-10', 'GMT-9', 'GMT-8', 'GMT-7', 'GMT-6', 'GMT-5', 'GMT-4', 'GMT-3', 'GMT-2', 'GMT-1', 'GMT+0', 'GMT+1', 'GMT+2', 'GMT+3', 'GMT+330', 'GMT+4', 'GMT+430', 'GMT+5', 'GMT+530', 'GMT+6', 'GMT+7', 'GMT+8', 'GMT+9', 'GMT+10', 'GMT+11', 'GMT+12'], group=g0)
+i_history_period        = input.int(30, 'History', minval=1, group=g0)
+i_show                  = i_history_period > 0
+i_lookback              = 12 * 60
+
+
+
+// Sessions
+i_show_sess1            = input.bool(true, 'Session 1 ', group=g1_01, inline='session1_1') and i_show
+i_sess1_label           = input.string('Tokyo', '', group=g1_01, inline='session1_1')
+i_sess1_color           = input.color(#000000, '', group=g1_01, inline='session1_1')
+i_sess1_barcolor1       = input.color(#000000, '•', group=g1_01, inline='session1_1')
+i_sess1_barcolor2       = input.color(#000000, '', group=g1_01, inline='session1_1')
+i_sess1                 = input.session('1800-0000', 'Time', group=g1_01)
+i_sess1_extend          = input.string(option_no, 'Extend', options=[option_yes, option_no], group=g1_01)
+i_sess1_op              = input.string(option_no, 'Opening range', group=g1_01, options=[option_yes, option_no]) != option_no and i_show
+i_sess1_fib             = input.string(option_no, 'Fibonacci levels', group=g1_01, options=[option_yes, option_no]) != option_no
+i_sess1_chart           = input.string(option_no, 'Bar', options=[option_chart_1, option_chart_2, option_no], group=g1_01)
+i_sess1_barcolor        = i_sess1_chart == option_chart_1
+i_sess1_plotcandle      = i_sess1_chart == option_chart_2
+
+i_show_sess2            = input.bool(true, 'Session 2 ', group=g1_02, inline='session2_1') and i_show
+i_sess2_label           = input.string('New York', '', group=g1_02, inline='session2_1')
+i_sess2_color           = input.color(color.rgb(0, 255, 115), '', group=g1_02, inline='session2_1')
+i_sess2_barcolor1       = input.color(color.rgb(0, 255, 115), '•', group=g1_02, inline='session2_1')
+i_sess2_barcolor2       = input.color(color.rgb(0, 255, 115), '', group=g1_02, inline='session2_1')
+i_sess2                 = input.session('0600-1200', 'Time', group=g1_02)
+i_sess2_extend          = input.string(option_no, 'Extend', options=[option_yes, option_no], group=g1_02)
+i_sess2_op              = input.string(option_no, 'Opening range', group=g1_02, options=[option_yes, option_no]) != option_no and i_show
+i_sess2_fib             = input.string(option_no, 'Fibonacci levels', group=g1_02, options=[option_yes, option_no]) != option_no
+i_sess2_chart           = input.string(option_no, 'Bar', options=[option_chart_1, option_chart_2, option_no], group=g1_02)
+i_sess2_barcolor        = i_sess2_chart == option_chart_1
+i_sess2_plotcandle      = i_sess2_chart == option_chart_2
+
+i_show_sess3            = input.bool(false, 'Session 3 ', group=g1_03, inline='session3_1') and i_show
+i_sess3_label           = input.string('London', '', group=g1_03, inline='session3_1')
+i_sess3_color           = input.color(color.rgb(0, 60, 255), '', group=g1_03, inline='session3_1')
+i_sess3_barcolor1       = input.color(color.rgb(0, 60, 255), '•', group=g1_03, inline='session3_1')
+i_sess3_barcolor2       = input.color(color.rgb(0, 60, 255), '', group=g1_03, inline='session3_1')
+i_sess3                 = input.session('0000-0600', 'Time', group=g1_03)
+i_sess3_extend          = input.string(option_no, 'Extend', options=[option_yes, option_no], group=g1_03)
+i_sess3_op              = input.string(option_no, 'Opening range', group=g1_03, options=[option_yes, option_no]) != option_no and i_show
+i_sess3_fib             = input.string(option_no, 'Fibonacci levels', group=g1_03, options=[option_yes, option_no]) != option_no
+i_sess3_chart           = input.string(option_no, 'Bar', options=[option_chart_1, option_chart_2, option_no], group=g1_03)
+i_sess3_barcolor        = i_sess3_chart == option_chart_1
+i_sess3_plotcandle      = i_sess3_chart == option_chart_2
+
+i_show_sess4            = input.bool(false, 'Session 4 ', group=g1_04, inline='session4_1') and i_show
+i_sess4_label           = input.string('Sydney', '', group=g1_04, inline='session4_1')
+i_sess4_color           = input.color(#FB71A3, '', group=g1_04, inline='session4_1')
+i_sess4_barcolor1       = input.color(#FB71A3, '•', group=g1_04, inline='session4_1')
+i_sess4_barcolor2       = input.color(#FB71A3, '', group=g1_04, inline='session4_1')
+i_sess4                 = input.session('2000-0500', 'Time', group=g1_04)
+i_sess4_extend          = input.string(option_no, 'Extend', options=[option_yes, option_no], group=g1_04)
+i_sess4_op              = input.string(option_no, 'Opening range', group=g1_04, options=[option_yes, option_no]) != option_no and i_show
+i_sess4_fib             = input.string(option_no, 'Fibonacci levels', group=g1_04, options=[option_yes, option_no]) != option_no
+i_sess4_chart           = input.string(option_no, 'Bar', options=[option_chart_1, option_chart_2, option_no], group=g1_04)
+i_sess4_barcolor        = i_sess4_chart == option_chart_1
+i_sess4_plotcandle      = i_sess4_chart == option_chart_2
+
+// Show & Styles
+i_sess_box_style        = input.string('Background', '', options=['Box', 'Background', 'Hamburger', 'Sandwich'], group=g4, inline='box_style')
+i_sess_border_style     = f_border_style(input.string(option_border_style1, '', options=[option_border_style1, option_border_style2, option_border_style3], group=g4, inline='box_style'))
+i_sess_border_width     = input.int(1, '', minval=0, group=g4, inline='box_style')
+i_sess_box_background   = input.bool(true, 'BG color', group=g4, inline='box_style_options')
+i_sess_box_dots         = input.bool(false, 'Dots', group=g4, inline='box_style_options')
+i_sess_end_offset       = input.bool(true, 'Include the latest bar in the Session end', group=g4)
+i_sess_bgopacity        = i_sess_box_background ? 94 : 100
+i_sess_bgopacity2       = math.min(i_sess_bgopacity - 4, 100)
+i_sess_border_width    := i_sess_box_style == 'Background' ? 0 : i_sess_border_width
+session_end_offset      = i_sess_end_offset ? 0 : 1
+
+// Labels
+i_label_show            = input.bool(false, '', inline='label_show', group=g6) and i_show
+i_sess_label_size       = str.lower(input.string('Small', '', options=['Auto', 'Tiny', 'Small', 'Normal', 'Large', 'Huge'], inline='label_show', group=g6))
+i_label_position_y      = str.lower(input.string('Top', '', options=['Top', 'Bottom'], inline='label_show', group=g6))
+i_label_position_s      = str.lower(input.string('Outside', '', options=['Inside', 'Outside'], inline='label_show', group=g6))
+i_label_position        = f_get_label_position(i_label_position_y, i_label_position_s)
+i_label_format_name     = input.bool(false, 'Name', inline='label_format', group=g6)
+i_label_format_day      = input.bool(false, 'Day', inline='label_format', group=g6)
+i_label_format_price    = input.bool(false, 'Price', inline='label_format', group=g6)
+i_label_format_pips     = input.bool(false, 'Pips', inline='label_format', group=g6)
+
+// Opening range
+i_o_minutes             = input.int(15, title='Periods mins', minval=1, step=1, group=g5)
+i_o_minutes            := math.max(i_o_minutes, timeframe.multiplier + 1)
+i_o_transp              = 50
+i_o_size                = input.string(size.small, 'Label size', options=[size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group=g5)
+i_o_color               = input.string(option_candle_color2, 'Label color   ', options=[option_candle_color1, option_candle_color2], group=g5, inline="op_label_color")
+i_o_label_1             = input.string('price', 'Label text    ', group=g5, inline='op_label', tooltip="Type \"price\" to display the price")
+i_o_label_2             = input.string('price', '', group=g5, inline='op_label')
+i_o_label_color         = input.string('white', '', options=['black', 'white'], group=g5, inline='op_label_color')
+i_o_nowonly             = input.bool(false, 'Current session only', group=g5, inline='op_options')
+i_o_breakout_icon       = input.bool(false, 'Breakout flag', group=g5, inline='op_options')
+i_o_target              = input.bool(false, 'Target lines', group=g5, inline='op_options')
+i_o_target_boxes        = input.bool(false, 'Target boxes', group=g5, inline='op_options')
+i_show_op_table         = input.bool(false, 'Data table', group=g5)
+
+// Candle
+option_candle_body      = 'OC'
+option_candle_wick      = 'OHLC'
+i_show_candle           = input.bool(false, '', group=g11, inline='candle_display') //and (i_candle_border_width > 0)
+i_candle                = input.string(option_candle_wick, '', options=[option_candle_wick, option_candle_body], group=g11,  inline='candle_display')
+i_candle_border_width   = input.int(1, '', minval=1, group=g11,  inline='candle_display')
+i_candle_color          = input.string(option_candle_color1, '', options=[option_candle_color1, option_candle_color2], group=g11, inline='candle_display')
+i_candle_color_g        = input.color(#A6E22E, '', group=g11, inline='candle_display')
+i_candle_color_r        = input.color(#F92672, '', group=g11, inline='candle_display')
+
+i_candle               := i_show_candle ? i_candle : option_hide
+i_show_candle_wick      = i_candle == option_candle_wick
+i_sess_bgopacity2      := i_show_candle ? 100 : i_sess_bgopacity2
+
+// Fibonacci levels
+i_f_show                = input.bool(false, '', group=g7, inline='fib_display')
+i_f_linestyle           = f_border_style(input.string(option_border_style1, '', options=[option_border_style1, option_border_style2, option_border_style3], group=g7, inline='fib_display'))
+i_f_linewidth           = input.int(1, '', minval=1, group=g7, inline='fib_display')
+i_sess1_fib            := i_f_show ? i_sess1_fib : false
+i_sess2_fib            := i_f_show ? i_sess2_fib : false
+i_sess3_fib            := i_f_show ? i_sess3_fib : false
+i_sess4_fib            := i_f_show ? i_sess4_fib : false
+
+// Information table
+i_show_info             = input.bool(false, '', group=g12, inline='info_display')
+i_info_size             = input.string(size.small, '', options=[size.auto, size.tiny, size.small, size.normal, size.large, size.huge], group=g12, inline='info_display')
+i_info_value_type       = input.string('Pips', '', options=['Price', 'Pips'], group=g12, inline='info_display')
+i_info_period           = input.int(50, '', group=g12, inline='info_display')
+
+// Alerts
+i_alert1_show           = input.bool(false, 'Alerts - Sessions stard/end', group=g10)
+i_alert2_show           = input.bool(false, 'Alerts - Opening range breakouts', group=g10)
+i_alert3_show           = input.bool(false, 'Alerts - Price crossed session\'s High/Low after session closed', group=g10)
+
+// ------------------------
+// Drawing labels
+// ------------------------
+f_render_label (_show, Session data, _is_started, _color, _top, _bottom) =>
+    var label my_label = na
+    var int start_time = na
+    session = data.session()
+
+    v_position_y = (i_label_position_y == 'top') ? _top : _bottom
+    v_label = array.new_string()
+    v_chg = _top - _bottom
+
+    if _is_started
+        start_time := time
+
+    if i_label_format_name and not na(data.name)
+        array.push(v_label, data.name)
+
+    if i_label_format_day
+        array.push(v_label, util.get_day(dayofweek(start_time, i_tz)))
+
+    if i_label_format_price
+        array.push(v_label, str.format(fmt_price, v_chg))
+
+    if i_label_format_pips
+        array.push(v_label, str.format(fmt_pips, util.toPips(v_chg)))
+
+    if _show
+        if _is_started
+            util.clear_labels(data.labels, data.is_extended ? 0 : i_history_period - 1)
+
+            my_label := label.new(bar_index, v_position_y, array.join(v_label, icon_separator), textcolor=_color, color=TRANSPARENT, size=i_sess_label_size, style=i_label_position, tooltip='Pips')
+
+            array.push(data.labels, my_label)
+
+        else if bool(session)
+            label.set_y(my_label, v_position_y)
+            label.set_text(my_label, array.join(v_label, icon_separator))
+
+    data
+
+// ------------------------
+// Drawing Fibonacci levels
+// ------------------------
+f_render_fibonacci (_show, data, _is_started, _is_ended, _x1, _x2, _color, _top, _bottom, _level, _width, _style) =>
+    var line my_line = na
+    session = data.session()
+
+    if _show
+        y = (_top - _bottom) * _level + _bottom
+
+        if _is_started
+            my_line := line.new(_x1, y, _x2, y, width=_width, color=color.new(_color, 30), style=_style)
+            array.push(data.fib, my_line)
+
+            if data.is_extended
+                line.set_extend(my_line, extend.right)
+
+        else if  bool(session)
+            line.set_y1(my_line, y)
+            line.set_y2(my_line, y)
+
+            f_set_line_x2(my_line, _x2)
+        else if _is_ended
+            f_set_line_x2(my_line, _x2-session_end_offset)
+    data
+
+// ------------------------
+// Drawing Opening range
+// ------------------------
+f_render_oprange (_show, Session data, _is_started, _is_ended, _x1, _x2, _color, _max) =>
+    var int start_time  = na
+    var label my_label1 = na
+    var label my_label2 = na
+    var bool is_opened  = false
+    var float R1 = na, var float R2 = na
+    var float S1 = na, var float S2 = na
+
+    var is_reached_R1 = false
+    var is_reached_R2 = false
+    var is_reached_S1 = false
+    var is_reached_S2 = false
+    var color_gray    = ac.tradingview('gray')
+    var color_orange  = ac.tradingview('orange')
+    var target_line_width = 1
+
+    session = data.session()
+
+    top                     = ta.highest(high, _max)
+    btm                     = ta.lowest(low, _max)
+
+    var float saved_top     = na
+
+    if _show
+        if _is_started
+            util.clear_boxes(data.opr_boxes, data.is_extended ? 0 : math.max(0, (i_history_period - 1) * 2))
+            util.clear_lines(data.opr_lines, data.is_extended ? 0 : math.max(0, (i_history_period - 1) * 2))
+            util.clear_labels(data.opr_labels, data.is_extended ? 0 : math.max(0, (i_history_period - 1) * 2))
+
+            start_time      := time
+            is_opened       := true
+
+        else if bool(session)
+            time_op = start_time + (i_o_minutes * 60 * 1000)
+            time_op_delay = time_op - f_get_time_by_bar(1)
+
+            if time <= time_op and time > time_op_delay
+                top_color       = i_o_color == option_candle_color2 ? ac.tradingview('blue') : _color
+                btm_color       = i_o_color == option_candle_color2 ? ac.tradingview('red')  : _color
+                top_text_color  = color.from_gradient(85, 0, 100, top_color, ac.panda(i_o_label_color))
+                bot_text_color  = color.from_gradient(85, 0, 100, btm_color, ac.panda(i_o_label_color))
+                extend          = data.is_extended ? extend.right : extend.none
+
+                mdl             = math.avg(top, btm)
+                avg1            = (data.price_range_avg * 0.786) * 0.5
+                avg2            = (data.price_range_avg * 1.272) * 0.5
+
+                saved_top := top
+
+                R1 := math.avg(btm, mdl) + avg1
+                R2 := math.avg(btm, mdl) + avg2
+                S1 := math.avg(top, mdl) - avg1
+                S2 := math.avg(top, mdl) - avg2
+
+                array.push(data.opr_boxes, box.new (_x1, top, bar_index, btm, border_width=0, bgcolor=color.new(ac.tradingview('yellow'), i_o_transp)))
+                array.push(data.opr_lines, line.new(_x1, top, _x2, top, style=line.style_dotted, color=top_color, extend=extend))
+                array.push(data.opr_lines, line.new(_x1, btm, _x2, btm, style=line.style_dotted, color=btm_color, extend=extend))
+
+                array.push(data.opr_lines, line.new(_x1, R2 , _x2, R2 , style=line.style_solid, color=i_o_target ? color.new(top_color, 40) : TRANSPARENT, width=target_line_width, extend=extend))
+                array.push(data.opr_lines, line.new(_x1, S2 , _x2, S2 , style=line.style_solid, color=i_o_target ? color.new(btm_color, 40) : TRANSPARENT, width=target_line_width, extend=extend))
+                array.push(data.opr_lines, line.new(_x1, R1 , _x2, R1 , style=line.style_solid, color=i_o_target ? color.new(top_color, 40) : TRANSPARENT, width=target_line_width, extend=extend))
+                array.push(data.opr_lines, line.new(_x1, S1 , _x2, S1 , style=line.style_solid, color=i_o_target ? color.new(btm_color, 40) : TRANSPARENT, width=target_line_width, extend=extend))
+                array.push(data.opr_boxes, box.new (_x1, R1, _x1+1, R2, border_width=0, bgcolor=i_o_target_boxes ? color.new(top_color, i_o_transp) : TRANSPARENT))
+                array.push(data.opr_boxes, box.new (_x1, S1, _x1+1, S2, border_width=0, bgcolor=i_o_target_boxes ? color.new(btm_color, i_o_transp) : TRANSPARENT))
+
+                if i_o_target
+                    array.unshift(data.opr_linefills, linefill.new(array.get(data.opr_lines, array.size(data.opr_lines)-1), array.get(data.opr_lines, array.size(data.opr_lines)-3), color.new(btm_color, 96))) // S
+                    array.unshift(data.opr_linefills, linefill.new(array.get(data.opr_lines, array.size(data.opr_lines)-2), array.get(data.opr_lines, array.size(data.opr_lines)-4), color.new(top_color, 96))) // R
+
+                t1 = i_o_label_1 == 'price' ? str.tostring(top, format.mintick) : i_o_label_1
+                t2 = i_o_label_2 == 'price' ? str.tostring(btm, format.mintick) : i_o_label_2
+
+                my_label1 := label.new(_x1-1, top, t1, yloc=yloc.price, style=label.style_label_right, color=top_color, textcolor=top_text_color, size=i_o_size, tooltip=str.tostring(top, format.mintick))
+                my_label2 := label.new(_x1-1, btm, t2, yloc=yloc.price, style=label.style_label_right, color=btm_color, textcolor=bot_text_color, size=i_o_size, tooltip=str.tostring(btm, format.mintick))
+
+                array.push(data.opr_labels, my_label1)
+                array.push(data.opr_labels, my_label2)
+
+                alert('Opening range is fixed.', alert.freq_once_per_bar)
+            else if is_opened
+                if ta.crossover(high, R1) and (not is_reached_R1)
+                    is_reached_R1 := true
+
+                    if i_o_breakout_icon
+                        label.new(bar_index, high, '×', yloc=yloc.price, style=label.style_label_center, color=TRANSPARENT, textcolor=ac.tradingview('blue'), size=size.large)
+
+                if ta.crossover(high, R2) and (not is_reached_R2)
+                    is_reached_R2 := true
+
+                    if i_o_breakout_icon
+                        label.new(bar_index, high, '×', yloc=yloc.price, style=label.style_label_center, color=TRANSPARENT, textcolor=ac.tradingview('blue'), size=size.large)
+
+                if ta.crossunder(low, S1) and (not is_reached_S1)
+                    is_reached_S1 := true
+
+                    if i_o_breakout_icon
+                        label.new(bar_index, low, '×', yloc=yloc.price, style=label.style_label_center, color=TRANSPARENT, textcolor=ac.tradingview('red'), size=size.large)
+
+                if ta.crossunder(low, S2) and (not is_reached_S2)
+                    is_reached_S2 := true
+
+                    if i_o_breakout_icon
+                        label.new(bar_index, low, '×', yloc=yloc.price, style=label.style_label_center, color=TRANSPARENT, textcolor=ac.tradingview('red'), size=size.large)
+                true
+
+        else if _is_ended
+
+            if i_o_nowonly
+                util.clear_lines(data.opr_lines, -1)
+                util.clear_labels(data.opr_labels, -1)
+                util.clear_boxes(data.opr_boxes, -1)
+
+            else if array.size(data.opr_lines) > 0
+                for i = 0 to 5
+                    the_line = array.get(data.opr_lines, array.size(data.opr_lines) - (i + 1))
+                    line.set_x2(the_line, _x2-session_end_offset)
+
+                for i = 0 to 1
+                    the_label = array.get(data.opr_labels, array.size(data.opr_labels) - (i + 1))
+                    label.set_text(the_label, '')
+                    label.set_style(the_label, label.style_label_center)
+                    label.set_textcolor(the_label, i_o_color == option_candle_color2 ? label.get_y(the_label) >= saved_top ? ac.tradingview('blue') : ac.tradingview('red') : _color)
+                    label.set_color(the_label, TRANSPARENT)
+                    label.set_size(the_label, size.tiny)
+                    label.set_x(the_label,_x1)
+
+            data.op.total_count := data.op.total_count + 1
+            data.op.reached_count := (is_reached_R1 or is_reached_R2 or is_reached_S1 or is_reached_S2) ? data.op.reached_count + 1 : data.op.reached_count
+            data.op.reached_R1_count := is_reached_R1 ? data.op.reached_R1_count + session_end_offset : data.op.reached_R1_count
+            data.op.reached_R2_count := is_reached_R2 ? data.op.reached_R2_count + session_end_offset : data.op.reached_R2_count
+            data.op.reached_S1_count := is_reached_S1 ? data.op.reached_S1_count + session_end_offset : data.op.reached_S1_count
+            data.op.reached_S2_count := is_reached_S2 ? data.op.reached_S2_count + session_end_offset : data.op.reached_S2_count
+
+            // Reset
+            R1 := na, R2 := na, S1 := na, S2 := na
+            is_reached_R1 := false
+            is_reached_R2 := false
+            is_reached_S1 := false
+            is_reached_S2 := false
+            is_opened := false
+            saved_top := na
+
+        is_opened
+    data
+
+
+// ------------------------
+// Drawing candle
+// ------------------------
+f_render_candle (_show, Session data, _is_started, _is_ended, _color, _top, _bottom, _open, _x1, _x2) =>
+    var box body = na
+    var line wick1 = na
+    var line wick2 = na
+    session = data.session()
+
+    border_width = i_candle_border_width
+    cx = math.round(math.avg(_x2, _x1)) - math.round(border_width / 2)
+
+    body_color = i_candle_color == option_candle_color2 ? close > _open ? i_candle_color_g : i_candle_color_r : _color
+    body_color := color.new(body_color, 30)
+
+    if _show
+        if _is_started
+            body    := box.new(_x1, _top, _x2, _bottom, body_color, border_width, line.style_solid, bgcolor=color.new(color.black, 100))
+            wick1   := i_show_candle_wick ? line.new(cx, _top, cx, _top, color=body_color, width=border_width, style=line.style_solid) : na
+            wick2   := i_show_candle_wick ? line.new(cx, _bottom, cx, _bottom, color=body_color, width=border_width, style=line.style_solid) : na
+
+            array.push(data.candle.body, body)
+            array.push(data.candle.wick, wick1)
+            array.push(data.candle.wick, wick2)
+
+            util.clear_boxes(data.candle.body, i_history_period)
+            util.clear_lines(data.candle.wick, i_history_period * 2)
+
+        else if  bool(session)
+            top    = math.max(_open, close)
+            bottom = math.min(_open, close)
+
+            box.set_top(body, top)
+            box.set_bottom(body, bottom)
+            box.set_right(body, _x2)
+            box.set_border_color(body, body_color)
+
+            line.set_y1(wick1, _top)
+            line.set_y2(wick1, top)
+            f_set_line_x1(wick1, cx)
+            f_set_line_x2(wick1, cx)
+            line.set_color(wick1, body_color)
+
+            line.set_y1(wick2, _bottom)
+            line.set_y2(wick2, bottom)
+            f_set_line_x1(wick2, cx)
+            f_set_line_x2(wick2, cx)
+            line.set_color(wick2, body_color)
+
+        else if _is_ended
+            box.set_right(body, bar_index-session_end_offset)
+
+    data
+
+
+// ------------------------
+// Rendering limit message
+// ------------------------
+f_render_limitmessage (_show, Session data, _is_started, _is_ended, _x, _y, _rightbars) =>
+    var label my_note = na
+    session = data.session()
+
+    if _show
+        if _is_started
+            if _rightbars > MAX_BARS
+                my_note := label.new(_x, _y, f_message_limit_bars(_rightbars), style=label.style_label_upper_left, color=color.yellow, textalign=text.align_left, yloc=yloc.price)
+
+        else if  bool(session)
+            if _rightbars > MAX_BARS
+                label.set_y(my_note, _y)
+                label.set_text(my_note, f_message_limit_bars(_rightbars))
+            else
+                label.delete(my_note)
+
+        else if _is_ended
+            label.delete(my_note)
+    data
+
+// Rendering session
+//
+f_render_sessionrange (_show, Session data, _is_started, _is_ended, _color, _top, _bottom, _x1, _x2, _is_vertical = false) =>
+    var line above_line = na
+    var line below_line = na
+    session = data.session()
+
+    if _show
+        if _is_started
+            util.clear_lines(data.lines, data.is_extended ? 0 : i_history_period * 2 - 2)
+
+            if _is_vertical
+                above_line := line.new(_x1, _top, _x1, _bottom, width=i_sess_border_width, style=i_sess_border_style, color=_color)
+                below_line := line.new(_x2, _top, _x2, _bottom, width=i_sess_border_width, style=i_sess_border_style, color=_color)
+            else
+                above_line := line.new(_x1, _top,    _x2, _top,    width=i_sess_border_width, style=i_sess_border_style, color=_color)
+                below_line := line.new(_x1, _bottom, _x2, _bottom, width=i_sess_border_width, style=i_sess_border_style, color=_color)
+
+            linefill.new(above_line, below_line, color.new(_color, i_sess_bgopacity))
+
+            array.push(data.lines, above_line)
+            array.push(data.lines, below_line)
+
+
+            if data.is_extended
+                if _is_vertical
+                    line.set_extend(above_line, extend.both)
+                    line.set_extend(below_line, extend.both)
+                else
+                    line.set_extend(above_line, extend.right)
+                    line.set_extend(below_line, extend.right)
+
+        else if bool(session)
+            if _is_vertical
+                line.set_y1(above_line, _bottom)
+                line.set_y2(above_line, _top)
+                line.set_y1(below_line, _bottom)
+                line.set_y2(below_line, _top)
+            else
+                line.set_y1(above_line, _top)
+                line.set_y2(above_line, _top)
+                line.set_x2(above_line, _x2)
+
+                line.set_y1(below_line, _bottom)
+                line.set_y2(below_line, _bottom)
+                line.set_x2(below_line, _x2)
+
+        else if _is_ended
+            if _is_vertical
+                line.set_x1(below_line, _x2-session_end_offset)
+                line.set_x2(below_line, _x2-session_end_offset)
+            else
+                line.set_x2(above_line, _x2-session_end_offset)
+                line.set_x2(below_line, _x2-session_end_offset)
+
+            data.add(_top[1] - _bottom[1], i_info_period)
+
+        data
+
+// ------------------------
+// Rendering session box
+// ------------------------
+f_render_session (_show, Session data, _is_started, _is_ended, _color, _top, _bottom, _x1, _x2) =>
+    var box my_box   = na
+    session = data.session()
+
+    if _show
+        if _is_started
+            util.clear_boxes(data.boxes, data.is_extended ? 0 : i_history_period - 1)
+
+            my_box := box.new(_x1, _top, _x2, _bottom, _color, i_sess_border_width, i_sess_border_style, bgcolor=color.new(_color, i_sess_bgopacity))
+            array.push(data.boxes, my_box)
+
+            if data.is_extended
+                box.set_extend(my_box, extend.right)
+
+        else if bool(session)
+            box.set_top(my_box, _top)
+            box.set_bottom(my_box, _bottom)
+            f_set_box_right(my_box, _x2)
+
+        else if _is_ended
+            box.set_right(my_box, _x2-session_end_offset)
+            data.add(_top[1] - _bottom[1], i_info_period)
+
+    data
+
+f_render_current_line (_show, Session data, _is_started, _is_ended, _color, _top, _bottom, _x1, _x2) =>
+    var line my_line = na
+    session = data.session()
+
+    if _show
+        if _is_started
+            my_line := line.new(_x1, close, _x1 + 2, close, color=_color, width=3)
+            my_line
+
+        else if bool(session)
+            line.set_y1(my_line, close)
+            line.set_y2(my_line, close)
+
+        else if _is_ended
+            line.delete(my_line)
+
+        true
+
+f_render_dots (_show, Session data, _is_started, _is_ended, _color, _top, _bottom, _x1, _x2) =>
+    var float _open = na
+    var box oc_box = na
+    var line oc_line_u = na
+    var line oc_line_l = na
+    session = data.session()
+
+    if _show and i_sess_box_dots
+        if _is_started
+            util.clear_lines(data.oclines, data.is_extended ? 0 : (i_history_period * 2) - 2)
+            util.clear_labels(data.oc_labels, data.is_extended ? 0 : math.max(0, (i_history_period * 2) - 2))
+
+            oc_line_u := line.new(_x1, open , _x2, open , color=color.new(_color, 70), style=line.style_dotted)
+            oc_line_l := line.new(_x1, close, _x2, close, color=color.new(_color, 70), style=line.style_dotted)
+            linefill.new(oc_line_u, oc_line_l, color.new(_color, i_sess_bgopacity2))
+
+            array.push(data.oclines, oc_line_u)
+            array.push(data.oclines, oc_line_l)
+
+            _open := open
+
+        else if  bool(session)
+            line.set_x2(oc_line_u, _x2)
+            line.set_x2(oc_line_l, _x2)
+            line.set_y1(oc_line_l, close)
+            line.set_y2(oc_line_l, close)
+
+        else if _is_ended
+            array.push(data.oc_labels, Dot.new(_x1, _open, '●', _color).create())
+            array.push(data.oc_labels, Dot.new(_x2-session_end_offset, close[1], '◉', _color).create())
+
+            line.set_x2(oc_line_u, _x2-session_end_offset)
+            line.set_x2(oc_line_l, _x2-session_end_offset)
+            line.set_y1(oc_line_l, close[1])
+            line.set_y2(oc_line_l, close[1])
+
+            _open := na
+    true
+
+// ------------------------
+// Drawing market
+// ------------------------
+f_render_main (_show, Session data, _is_started, _is_ended, _color, _top, _bottom) =>
+    var x1 = 0
+    var x2 = 0
+    x2_offset = 1
+    session = data.session()
+
+    x0_1 = ta.valuewhen(na(session[1]) and bool(session), bar_index, 1)
+    x0_2 = ta.valuewhen(na(session) and bool(session[1]), bar_index, 0)
+    x0_d = math.min(math.abs(x0_2 - x0_1), MAX_BARS)
+    rightbars = x0_d
+
+    if _show
+        if _is_started
+            x1 := bar_index
+            x2 := bar_index + x0_d
+
+            data.ohlc.open  := open
+            data.ohlc.high  := _top
+            data.ohlc.low   := _bottom
+            data.ohlc.hl    := _top -_bottom
+            data.in_session := true
+
+        else if  bool(session)
+            true_x2         = x1 + x0_d
+            rightbars      := true_x2 - bar_index
+            max_bars        = bar_index + MAX_BARS
+            x2             := math.min(true_x2, max_bars)
+
+            data.ohlc.high := _top
+            data.ohlc.low  := _bottom
+            data.ohlc.hl   := _top - _bottom
+
+        else if _is_ended
+            data.in_session := false
+            data.ohlc.open := na
+
+    [x1, x2, data.ohlc, rightbars]
+
+
+// ------------------------
+// Drawing
+// ------------------------
+draw (_show, Session data, _extend, _show_fib, _show_op) =>
+    data.update()
+
+    session     = data.session()
+    max         = data.get_bars_from_start()
+
+    top         = ta.highest(high, max)
+    bottom      = ta.lowest(low, max)
+
+    col         = data.colour
+
+    is_started  = f_get_started(session)
+    is_ended    = f_get_ended(session)
+
+    [x1, x2, ohlc, _rightbars] = f_render_main(_show, data, is_started, is_ended, col, top, bottom)
+
+    if i_sess_box_style == 'Box' or i_sess_box_style == 'Background' or i_sess_box_style == 'Candle'
+        f_render_session(_show, data, is_started, is_ended, col, top, bottom, x1, x2)
+        f_render_dots(_show, data, is_started, is_ended, col, top, bottom, x1, x2)
+
+    else if i_sess_box_style == 'Hamburger'
+        f_render_sessionrange(_show, data, is_started, is_ended, col, top, bottom, x1, x2)
+
+    else if i_sess_box_style == 'Sandwich'
+        f_render_sessionrange(_show, data, is_started, is_ended, col, top, bottom, x1, x2, true)
+
+    if i_show_candle
+        f_render_candle(_show, data, is_started, is_ended, col, top, bottom, ohlc.open, x1, x2)
+
+    if i_label_show
+        f_render_label(_show, data, is_started, col, top, bottom)
+
+    if _show_op
+        f_render_oprange(_show, data, is_started, is_ended, x1, x2, col, max)
+        f_render_current_line(_show, data, is_started, is_ended, col, top, bottom, x1, x2)
+
+    if _show_fib
+        if is_started 
+            util.clear_lines(data.fib, data.is_extended ? -1 : i_history_period * 3 - 4)
+
+        f_render_fibonacci(_show, data, is_started, is_ended, x1, x2, col, top, bottom, 0.500, 2, line.style_solid)
+        f_render_fibonacci(_show, data, is_started, is_ended, x1, x2, col, top, bottom, 0.628, i_f_linewidth, i_f_linestyle)
+        f_render_fibonacci(_show, data, is_started, is_ended, x1, x2, col, top, bottom, 0.382, i_f_linewidth, i_f_linestyle)
+
+    f_render_limitmessage(_show, data, is_started, is_ended, x1, bottom, _rightbars)
+
+    [bool(session), ohlc]
+
+///////////////////
+// Calculating
+///////////////////
+string tz = (i_tz == option_no or i_tz == '') ? na : i_tz
+
+///////////////////
+// Plotting
+///////////////////
+var sess1_data = Session.new(i_sess1, tz, i_sess1_label, i_sess1_color).create(i_sess1_extend, i_sess1_fib, i_sess1_op)
+var sess2_data = Session.new(i_sess2, tz, i_sess2_label, i_sess2_color).create(i_sess2_extend, i_sess2_fib, i_sess2_op)
+var sess3_data = Session.new(i_sess3, tz, i_sess3_label, i_sess3_color).create(i_sess3_extend, i_sess3_fib, i_sess3_op)
+var sess4_data = Session.new(i_sess4, tz, i_sess4_label, i_sess4_color).create(i_sess4_extend, i_sess4_fib, i_sess4_op)
+
+[is_sess1, sess1_ohlc] = draw(i_show_sess1, sess1_data, i_sess1_extend, i_sess1_fib, i_sess1_op)
+[is_sess2, sess2_ohlc] = draw(i_show_sess2, sess2_data, i_sess2_extend, i_sess2_fib, i_sess2_op)
+[is_sess3, sess3_ohlc] = draw(i_show_sess3, sess3_data, i_sess3_extend, i_sess3_fib, i_sess3_op)
+[is_sess4, sess4_ohlc] = draw(i_show_sess4, sess4_data, i_sess4_extend, i_sess4_fib, i_sess4_op)
+
+is_positive_bar         = close > open
+
+color c_barcolor        = na
+color c_plotcandle      = na
+
+c_sess1_barcolor        = (is_sess1) ? (is_positive_bar ? i_sess1_barcolor1 : i_sess1_barcolor2) : na
+c_sess2_barcolor        = (is_sess2) ? (is_positive_bar ? i_sess2_barcolor1 : i_sess2_barcolor2) : na
+c_sess3_barcolor        = (is_sess3) ? (is_positive_bar ? i_sess3_barcolor1 : i_sess3_barcolor2) : na
+c_sess4_barcolor        = (is_sess4) ? (is_positive_bar ? i_sess4_barcolor1 : i_sess4_barcolor2) : na
+
+if (i_sess1_chart != option_no) and is_sess1
+    c_barcolor         := i_sess1_barcolor   ? c_sess1_barcolor : na
+    c_plotcandle       := i_sess1_plotcandle ? c_sess1_barcolor : na
+
+if (i_sess2_chart != option_no) and is_sess2
+    c_barcolor         := i_sess2_barcolor   ? c_sess2_barcolor : na
+    c_plotcandle       := i_sess2_plotcandle ? c_sess2_barcolor : na
+
+if (i_sess3_chart != option_no) and is_sess3
+    c_barcolor         := i_sess3_barcolor   ? c_sess3_barcolor : na
+    c_plotcandle       := i_sess3_plotcandle ? c_sess3_barcolor : na
+
+if (i_sess4_chart != option_no) and is_sess4
+    c_barcolor         := i_sess4_barcolor   ? c_sess4_barcolor : na
+    c_plotcandle       := i_sess4_plotcandle ? c_sess4_barcolor : na
+
+barcolor(c_barcolor)
+plotcandle(open, high, low, close, color=is_positive_bar ? TRANSPARENT : c_plotcandle, bordercolor=c_plotcandle, wickcolor=c_plotcandle)
+
+
+////////////////////
+// Alerts
+////////////////////
+// Session alerts
+sess1_started = is_sess1 and not is_sess1[1], sess1_ended = not is_sess1 and is_sess1[1]
+sess2_started = is_sess2 and not is_sess2[1], sess2_ended = not is_sess2 and is_sess2[1]
+sess3_started = is_sess3 and not is_sess3[1], sess3_ended = not is_sess3 and is_sess3[1]
+sess4_started = is_sess4 and not is_sess4[1], sess4_ended = not is_sess4 and is_sess4[1]
+
+alertcondition(sess1_started,   'Session #1 started')
+alertcondition(sess1_ended,     'Session #1 ended'  )
+alertcondition(sess2_started,   'Session #2 started')
+alertcondition(sess2_ended,     'Session #2 ended'  )
+alertcondition(sess3_started,   'Session #3 started')
+alertcondition(sess3_ended,     'Session #3 ended'  )
+alertcondition(sess4_started,   'Session #4 started')
+alertcondition(sess4_ended,     'Session #4 ended'  )
+
+alertcondition((not is_sess1) and ta.crossover (close, sess1_ohlc.high), 'Session #1 High crossed (after session closed)')
+alertcondition((not is_sess1) and ta.crossunder(close, sess1_ohlc.low) , 'Session #1 Low crossed (after session closed)' )
+alertcondition((not is_sess2) and ta.crossover (close, sess2_ohlc.high), 'Session #2 High crossed (after session closed)')
+alertcondition((not is_sess2) and ta.crossunder(close, sess2_ohlc.low) , 'Session #2 Low crossed (after session closed)' )
+alertcondition((not is_sess3) and ta.crossover (close, sess3_ohlc.high), 'Session #3 High crossed (after session closed)')
+alertcondition((not is_sess3) and ta.crossunder(close, sess3_ohlc.low) , 'Session #3 Low crossed (after session closed)' )
+alertcondition((not is_sess4) and ta.crossover (close, sess4_ohlc.high), 'Session #4 High crossed (after session closed)')
+alertcondition((not is_sess4) and ta.crossunder(close, sess4_ohlc.low) , 'Session #4 Low crossed (after session closed)' )
+
+// Alerts visualized
+if i_alert1_show
+    if i_show_sess1
+        if sess1_started
+            label.new(bar_index, close, 'Start', yloc=yloc.abovebar, color=i_sess1_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+        if sess1_ended
+            label.new(bar_index - session_end_offset, close, 'End'  , yloc=yloc.abovebar, color=i_sess1_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+
+    if i_show_sess2
+        if sess2_started
+            label.new(bar_index, close, 'Start', yloc=yloc.abovebar, color=i_sess2_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+        if sess2_ended
+            label.new(bar_index - session_end_offset, close, 'End'  , yloc=yloc.abovebar, color=i_sess2_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+
+    if i_show_sess3
+        if sess3_started
+            label.new(bar_index, close, 'Start', yloc=yloc.abovebar, color=i_sess3_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+        if sess3_ended
+            label.new(bar_index - session_end_offset, close, 'End'  , yloc=yloc.abovebar, color=i_sess3_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+
+    if i_show_sess4
+        if sess4_started
+            label.new(bar_index, close, 'Start', yloc=yloc.abovebar, color=i_sess4_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+        if sess4_ended
+            label.new(bar_index - session_end_offset, close, 'End'  , yloc=yloc.abovebar, color=i_sess4_color, textcolor=color_text, size=size.small, style=label.style_label_down)
+
+plot(i_alert3_show ? sess1_ohlc.high : na, 'sess1_high', style=plot.style_linebr, color=i_sess1_color)
+plot(i_alert3_show ? sess1_ohlc.low  : na, 'sess1_low' , style=plot.style_linebr, color=i_sess1_color, linewidth=2)
+plot(i_alert3_show ? sess2_ohlc.high : na, 'sess2_high', style=plot.style_linebr, color=i_sess2_color)
+plot(i_alert3_show ? sess2_ohlc.low  : na, 'sess2_low' , style=plot.style_linebr, color=i_sess2_color, linewidth=2)
+plot(i_alert3_show ? sess3_ohlc.high : na, 'sess3_high', style=plot.style_linebr, color=i_sess3_color)
+plot(i_alert3_show ? sess3_ohlc.low  : na, 'sess3_low' , style=plot.style_linebr, color=i_sess3_color, linewidth=2)
+plot(i_alert3_show ? sess4_ohlc.high : na, 'sess4_high', style=plot.style_linebr, color=i_sess4_color)
+plot(i_alert3_show ? sess4_ohlc.low  : na, 'sess4_low' , style=plot.style_linebr, color=i_sess4_color, linewidth=2)
+
+plotshape(i_alert3_show and (not is_sess1) and ta.crossover (close, sess1_ohlc.high) ? sess1_ohlc.high : na, 'cross sess1_high', color=i_sess1_color, style=shape.triangleup  , location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess1) and ta.crossunder(close, sess1_ohlc.low)  ? sess1_ohlc.low  : na, 'cross sess1_low' , color=i_sess1_color, style=shape.triangledown, location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess2) and ta.crossover (close, sess2_ohlc.high) ? sess2_ohlc.high : na, 'cross sess2_high', color=i_sess2_color, style=shape.triangleup  , location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess2) and ta.crossunder(close, sess2_ohlc.low)  ? sess2_ohlc.low  : na, 'cross sess2_low' , color=i_sess2_color, style=shape.triangledown, location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess3) and ta.crossover (close, sess3_ohlc.high) ? sess3_ohlc.high : na, 'cross sess3_high', color=i_sess3_color, style=shape.triangleup  , location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess3) and ta.crossunder(close, sess3_ohlc.low)  ? sess3_ohlc.low  : na, 'cross sess3_low' , color=i_sess3_color, style=shape.triangledown, location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess4) and ta.crossover (close, sess4_ohlc.high) ? sess4_ohlc.high : na, 'cross sess4_high', color=i_sess4_color, style=shape.triangleup  , location=location.absolute, size=size.tiny)
+plotshape(i_alert3_show and (not is_sess4) and ta.crossunder(close, sess4_ohlc.low)  ? sess4_ohlc.low  : na, 'cross sess4_low' , color=i_sess4_color, style=shape.triangledown, location=location.absolute, size=size.tiny)
+
+
+
+
+//////////////
+// Analysis //
+var text_color      = #e1e2e4
+var bgcolor         = #1a1c20
+var color_green     = ac.monokai('green')
+var color_orange    = ac.monokai('orange')
+var color_red       = ac.monokai('red')
+var color_ind_green = ac.tradingview('green')
+var color_ind_gray  = color.new(ac.tradingview('gray'), 30)
+var color_white     = #e1e2e4
+
+i_show_analysis2    = false//input.bool(false, 'Analysis')
+
+if i_show_info and barstate.islast
+    data = array.new<Session>()
+
+    if array.size(sess1_data.price_ranges) > 0
+        data.push(sess1_data)
+    if array.size(sess2_data.price_ranges) > 0
+        data.push(sess2_data)
+    if array.size(sess3_data.price_ranges) > 0
+        data.push(sess3_data)
+    if array.size(sess4_data.price_ranges) > 0
+        data.push(sess4_data)
+
+    var tbl_avg = table.new(position.top_right, 5, 5, frame_width=2, bgcolor=bgcolor, frame_color=#25272c, border_width=1, border_color=#25272c)
+
+    table.cell(tbl_avg, 0, 0, 'Session', text_color=color.new(text_color, 60), text_size=i_info_size, text_halign=text.align_center)
+    table.cell(tbl_avg, 1, 0, '',        text_color=color.new(text_color, 60), text_size=i_info_size)
+    table.cell(tbl_avg, 2, 0, 'Cur',     text_color=color.new(text_color, 60), text_size=i_info_size)
+    table.cell(tbl_avg, 3, 0, 'Avg('+str.tostring(i_info_period)+')', text_color=color.new(text_color, 60), text_size=i_info_size)
+    table.cell(tbl_avg, 4, 0, '%',       text_color=color.new(text_color, 60), text_size=i_info_size)
+    table.merge_cells(tbl_avg, 0, 0, 1, 0)
+
+    if array.size(data) > 0
+        for i = 0 to array.size(data) - 1
+            my_data = array.get(data, i)
+            in_session = my_data.in_session and session.ismarket
+            p = my_data.ohlc.hl / my_data.price_range_avg
+            col_cur = p < 0.75 ? color_green : p < 1.25 ? color_orange : color_red
+            v1 = i_info_value_type == 'Price' ? str.tostring(my_data.ohlc.hl, format.mintick) : str.tostring(util.toPips(my_data.ohlc.hl), '#.#')
+            v2 = i_info_value_type == 'Price' ? str.tostring(my_data.price_range_avg, format.mintick) : str.tostring(util.toPips(my_data.price_range_avg), '#.#')
+            v3 = in_session ? '◉' : '●'
+
+            color_name  = in_session ? color_white : color.new(ac.monokai('gray'), 30)
+            color_ind   = in_session ? color_ind_green : color_ind_gray
+            color_cur   = in_session ? col_cur : color.new(col_cur, 60)
+
+            table.cell(tbl_avg, 0, i + 1, my_data.name, text_color=color_name, text_size=i_info_size, text_halign=text.align_left)
+            table.cell(tbl_avg, 1, i + 1, v3, text_color=color_ind , text_size=size.tiny,   text_halign=text.align_center, text_valign=text.align_center)
+            table.cell(tbl_avg, 2, i + 1, v1, text_color=color_cur , text_size=i_info_size, text_halign=text.align_right, text_font_family=font.family_monospace)
+            table.cell(tbl_avg, 3, i + 1, v2, text_color=color_name, text_size=i_info_size, text_halign=text.align_right, text_font_family=font.family_monospace)
+            table.cell(tbl_avg, 4, i + 1, str.format('{0,number,percent}', p), text_color=color_cur, text_size=i_info_size, text_halign=text.align_right, text_font_family=font.family_monospace)
+
+
+row_index = 2
+var tbl_op = table.new(position.bottom_right, 7, 5, frame_width=2, bgcolor=bgcolor, frame_color=#25272c, border_width=1, border_color=#25272c)
+
+if i_show_op_table and (barstate.islast or barstate.isconfirmed)
+    data = array.new<Session>()
+
+    if sess1_data.op.reached_count > 0
+        array.unshift(data, sess1_data)
+    if sess2_data.op.reached_count > 0
+        array.unshift(data, sess2_data)
+    if sess3_data.op.reached_count > 0
+        array.unshift(data, sess3_data)
+    if sess4_data.op.reached_count > 0
+        array.unshift(data, sess4_data)
+
+    table.cell(tbl_op, 0, 0, 'Opening range('+ syminfo.ticker +')' + (array.size(data) == 0 ? ' (No data)' : ''), text_size=i_info_size)
+    table.merge_cells(tbl_op, 0, 0, 6, 0)
+
+    if array.size(data) > 0
+        table.cell(tbl_op, 0, 1, 'Session', text_size=i_info_size)
+        table.cell(tbl_op, 1, 1, 'Sum', text_size=i_info_size)
+        table.cell(tbl_op, 2, 1, 'R1', text_size=i_info_size)
+        table.cell(tbl_op, 3, 1, 'S1', text_size=i_info_size)
+        table.cell(tbl_op, 4, 1, 'R2', text_size=i_info_size)
+        table.cell(tbl_op, 5, 1, 'S2', text_size=i_info_size)
+        table.cell(tbl_op, 6, 1, 'Total', text_size=i_info_size)
+
+        for i = 0 to array.size(data) -1
+            my_data = array.get(data, i)
+            row_index := row_index + i
+            table.cell(tbl_op, 0, row_index, my_data.name, text_size=i_info_size, text_color=color_white, text_halign=text.align_left)
+            table.cell(tbl_op, 1, row_index, str.format('{0,number,percent}', my_data.op.reached_count    / my_data.op.total_count), text_font_family=font.family_monospace, text_halign=text.align_right, text_color=color_white, text_size=i_info_size)
+            table.cell(tbl_op, 2, row_index, str.format('{0,number,percent}', my_data.op.reached_R1_count / my_data.op.total_count), text_font_family=font.family_monospace, text_halign=text.align_right, text_color=color_white, text_size=i_info_size)
+            table.cell(tbl_op, 3, row_index, str.format('{0,number,percent}', my_data.op.reached_S1_count / my_data.op.total_count), text_font_family=font.family_monospace, text_halign=text.align_right, text_color=color_white, text_size=i_info_size)
+            table.cell(tbl_op, 4, row_index, str.format('{0,number,percent}', my_data.op.reached_R2_count / my_data.op.total_count), text_font_family=font.family_monospace, text_halign=text.align_right, text_color=color_white, text_size=i_info_size)
+            table.cell(tbl_op, 5, row_index, str.format('{0,number,percent}', my_data.op.reached_S2_count / my_data.op.total_count), text_font_family=font.family_monospace, text_halign=text.align_right, text_color=color_white, text_size=i_info_size)
+            table.cell(tbl_op, 6, row_index, str.tostring(my_data.op.total_count), text_font_family=font.family_monospace, text_halign=text.align_right, text_color=color_white, text_size=i_info_size)
+
+
+if i_show_analysis2 and barstate.islast
+    max = 100
+    g_base = ta.lowest(max)
+    s3_count = 0
+    s2_count = 0
+
+    if array.size(sess1_data.price_ranges) > 0 and array.size(sess3_data.price_ranges) > 0
+        for i = 0 to array.size(sess1_data.price_ranges) - 1
+            s1 = array.get(sess1_data.price_ranges, i)
+            s3 = array.get(sess3_data.price_ranges, i)
+
+            if s3 / s1 > 1
+                s3_count := s3_count + 1
+
+        row_index := row_index + 1
+
+        table.cell(tbl_op, 0, row_index, sess3_data.name + ' > ' + sess1_data.name, text_halign=text.align_left, text_color=color_white, text_size=i_info_size)
+        table.cell(tbl_op, 4, row_index, str.tostring(s3_count) + ' / ' + str.tostring(array.size(sess1_data.price_ranges)), text_halign=text.align_right, text_font_family=font.family_monospace, text_color=color_white, text_size=i_info_size)
+        table.cell(tbl_op, 6, row_index, str.format('{0,number,percent}', s3_count / array.size(sess1_data.price_ranges))  , text_halign=text.align_right, text_font_family=font.family_monospace, text_color=color_white, text_size=i_info_size)
+
+        table.merge_cells(tbl_op, 0, row_index, 3, row_index)
+        table.merge_cells(tbl_op, 4, row_index, 5, row_index)
+
+//////////////////////////////
+// LIMIT TIME OF DAY WINDOW //
+//////////////////////////////
+
+transparency    = 90 // input.int(title="Time Filter background transparency", defval=95)
+gmtSelect       = input.string(title="Select Local Time Zone", defval="GMT-4", options=["GMT-12","GMT-11","GMT-10","GMT-9","GMT-8","GMT-7", "GMT-6", "GMT-5", "GMT-4", "GMT-3", "GMT-2", "GMT-1", "GMT", "GMT+1", "GMT+2",	"GMT+3","GMT+4","GMT+5","GMT+6","GMT+7","GMT+8","GMT+9","GMT+10","GMT+11","GMT+12","GMT+13","GMT+14"], confirm=true, group="Limit Time of Day Window")
+// === INPUT TIME RANGE ===
+betweenTime     = input.session('0300-0400',  title = "Time Filter", group="Limit Time of Day Window")   // '0000-0000' is anytime to enter
+
+isTime(_position) =>                                                      // create function "within window of time"
+    isTime      = na(time(timeframe.period, _position + ':1234567', gmtSelect))               // current time is "within window of time"
+    
+bgcolor(color = isTime(betweenTime) ? na : color.new(color.green,transparency))
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © sbtnc
+// Created: 2020-01-11
+// Last modified: 2024-12-11
+// version 7.0
+
+
+//--------------------------------------------------------------------
+//#region                      Constants
+//--------------------------------------------------------------------
+
+color   COLOR_1         = color.blue
+color   COLOR_2         = color.red
+color   COLOR_3         = color.green
+color   COLOR_4         = color.purple
+color   COLOR_5         = color.orange
+int     HEAD_PADDING    = -2
+int     HEAD_TRANSP     = 60
+string  LABEL_SIZE      = size.small
+string  LABEL_STYLE     = label.style_none
+string  LINE_STYLE      = line.style_solid
+int     LINE_WIDTH      = 1
+int     OFFSET_PADDING  = 4
+string  TAIL_STYLE      = line.style_dotted
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                         Types 
+//--------------------------------------------------------------------
+
+// @type Contains the open's data.
+type Open 
+    int     barIndex
+    float   price 
+    string  name
+    bool    display
+
+
+// @enum Contains fields with configurable timeframe options as titles.
+enum Timeframes
+    s5  = "5 seconds"
+    s10 = "10 seconds"
+    s15 = "15 seconds"
+    s30 = "30 seconds"
+    m1  = "1 minute"
+    m2  = "2 minutes"
+    m3  = "3 minutes"
+    m5  = "5 minutes"
+    m10 = "10 minutes"
+    m15 = "15 minutes"
+    m30 = "30 minutes"
+    m45 = "45 minutes"
+    h1  = "1 hour"
+    h2  = "2 hours"
+    h3  = "3 hours"
+    h4  = "4 hours"
+    h6  = "6 hours"
+    h8  = "8 hours"
+    h12 = "12 hours"
+    D1  = "1 day"
+    W1  = "1 week"
+    M1  = "1 month"
+    M3  = "3 months"
+    M6  = "6 months"
+    M12 = "12 months"
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                        Inputs
+//--------------------------------------------------------------------
+
+string      group1                      = "Opens"
+string      group2                      = "Style"
+string      group3                      = "Preferences"
+
+string      rightOffsetTooltip          = "Extend the current opens to the right of the last bar."
+string      tailsTooltip                = "Extend the current opens to the left of the chart."
+string      headsTooltip                = "Extend the previous opens to the right."
+string      discoverPricesTooltip       = "On the intraday chart, discover the opens on the chart instead of requesting higher-timeframe data." +
+                                          "\n\nYou can use this setting when price discrepancies exist between the intraday and end-of-day data feeds."
+string      extendedHoursTooltip        = "If the extended trading hours are visible on the intraday chart, display the opens on the pre/post market session."
+
+bool        enableOpenInput1            = input.bool  (true,           title = "",                 group = group1, inline = "#1")
+Timeframes  openTimeframeInput1         = input.enum  (Timeframes.D1,  title = "",                 group = group1, inline = "#1", display = display.none)
+color       openColorInput1             = input.color (COLOR_1,        title = "",                 group = group1, inline = "#1")
+int         openLookbackInput1          = input.int   (1,              title = "",                 group = group1, inline = "#1", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput2            = input.bool  (true,           title = "",                 group = group1, inline = "#2")
+Timeframes  openTimeframeInput2         = input.enum  (Timeframes.W1,  title = "",                 group = group1, inline = "#2", display = display.none)
+color       openColorInput2             = input.color (COLOR_2,        title = "",                 group = group1, inline = "#2")
+int         openLookbackInput2          = input.int   (1,              title = "",                 group = group1, inline = "#2", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput3            = input.bool  (true,           title = "",                 group = group1, inline = "#3")
+Timeframes  openTimeframeInput3         = input.enum  (Timeframes.M1,  title = "",                 group = group1, inline = "#3", display = display.none)
+color       openColorInput3             = input.color (COLOR_3,        title = "",                 group = group1, inline = "#3")
+int         openLookbackInput3          = input.int   (1,              title = "",                 group = group1, inline = "#3", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput4            = input.bool  (false,          title = "",                 group = group1, inline = "#4")
+Timeframes  openTimeframeInput4         = input.enum  (Timeframes.M3,  title = "",                 group = group1, inline = "#4", display = display.none)
+color       openColorInput4             = input.color (COLOR_4,        title = "",                 group = group1, inline = "#4")
+int         openLookbackInput4          = input.int   (1,              title = "",                 group = group1, inline = "#4", minval = 1, maxval = 500, display = display.none)
+bool        enableOpenInput5            = input.bool  (false,           title = "",                 group = group1, inline = "#5")
+Timeframes  openTimeframeInput5         = input.enum  (Timeframes.M12, title = "",                 group = group1, inline = "#5", display = display.none)
+color       openColorInput5             = input.color (COLOR_5,        title = "",                 group = group1, inline = "#5")
+int         openLookbackInput5          = input.int   (1,              title = "",                 group = group1, inline = "#5", minval = 1, maxval = 500, display = display.none)
+int         rightOffsetInput            = input.int   (20,             title = "Offset",           group = group2, inline = "Offset", tooltip = rightOffsetTooltip, minval = 1, display = display.none)
+bool        enableTailsInput            = input.bool  (false,          title = "Show Tails",       group = group2, tooltip = tailsTooltip)
+bool        enableHeadsInput            = input.bool  (false,          title = "Show Projections", group = group2, tooltip = headsTooltip)
+bool        discoverPricesInput         = input.bool  (false,          title = "Discover Prices",  group = group3, tooltip = discoverPricesTooltip)
+bool        enableExtendedSessionInput  = input.bool  (false,          title = "Extended Hours",   group = group3, tooltip = extendedHoursTooltip)
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                   Functions & methods
+//--------------------------------------------------------------------
+
+// @function Check if the open for the specified `timeframe` can be displayed on the chart context.
+// @returns  simple bool
+method isVisible(simple string timeframe) =>
+    timeframe.in_seconds(timeframe) > timeframe.in_seconds()
+
+
+// @function Detect changes of opens.
+// @returns  series bool
+method change(
+     simple string timeframe,
+     series int    timeframeTime,
+     simple bool   discoverPrice,
+     simple bool   discoverExtendedPrice
+     ) =>
+
+    switch 
+        discoverExtendedPrice => timeframe.change(timeframe)
+        discoverPrice         => ta.change(timeframeTime) > 0 or (barstate.isfirst and time == timeframeTime)
+        =>                       ta.change(timeframeTime) > 0 or barstate.isfirst
+
+
+// @function Request the data in the specified `timeframe` context.
+// @returns  ([int, float]) The open's time and price.
+method request(string timeframe, bool extendedSession) =>
+    string tickerId = ticker.new(syminfo.prefix, syminfo.ticker, extendedSession ? session.extended : session.regular)
+    request.security(tickerId, timeframe, [time, open], lookahead = barmerge.lookahead_on)
+
+
+// @function Check if the specified `timeframe` returns end-of-day data.
+// @returns  bool
+method higherTimeframeFeed(simple string timeframe) =>
+    timeframe.in_seconds(timeframe) >= timeframe.in_seconds("D") 
+
+
+// @function Check if the open can be sourced from the chart data.
+// @returns  bool
+discoverPrice(simple string timeframe, simple bool discovery) =>
+    discovery and higherTimeframeFeed(timeframe) and timeframe.isintraday
+
+
+// @function Check if the extended session open can be sourced from the chart.
+// @returns  bool
+discoverExtendedPrice(simple string timeframe, simple bool extendedSession) => 
+    extendedSession and higherTimeframeFeed(timeframe) and syminfo.session == session.extended
+
+
+// @function Check if the open time belongs to the previous bar.
+// @returns  bool
+adjustStartBarIndex(int t) =>
+    time_close[1] > t
+
+
+// @function Calculate the right position of the open level.
+// @returns  (int) The bar index. 
+getRightBarIndex(int padding = 0) =>
+    bar_index + rightOffsetInput + padding * OFFSET_PADDING
+
+
+// @function Produce the `timeframe` parameter from the given user input.
+// @returns  string
+method param(simple Timeframes input) =>
+    switch input
+        Timeframes.s5  => "5S"
+        Timeframes.s10 => "10S"
+        Timeframes.s15 => "15S"
+        Timeframes.s30 => "30S"
+        Timeframes.m1  => "1"
+        Timeframes.m2  => "2"
+        Timeframes.m3  => "3"
+        Timeframes.m5  => "5"
+        Timeframes.m10 => "10"
+        Timeframes.m15 => "15"
+        Timeframes.m30 => "30"
+        Timeframes.m45 => "45"
+        Timeframes.h1  => "60"
+        Timeframes.h2  => "120"
+        Timeframes.h3  => "180"
+        Timeframes.h4  => "240"
+        Timeframes.h6  => "360"
+        Timeframes.h8  => "480"
+        Timeframes.h12 => "720"
+        Timeframes.D1  => "1D"
+        Timeframes.W1  => "1W"
+        Timeframes.M1  => "1M" 
+        Timeframes.M3  => "3M"
+        Timeframes.M6  => "6M"
+        Timeframes.M12 => "12M"
+
+
+// @function Return the short display string for the specified `timeframe` string.
+// @returns  string
+method displayString(string this) =>
+    // Get the readable format.
+    string _str = switch this
+        "1"     => "m"
+        "2"     => "2m"
+        "3"     => "3m"
+        "5"     => "5m"
+        "10"    => "10m"
+        "15"    => "15m"
+        "30"    => "30m"
+        "45"    => "45m"
+        "60"    => "H"
+        "120"   => "2H"
+        "180"   => "3H"
+        "240"   => "4H"
+        "360"   => "6H"
+        "480"   => "8H"
+        "720"   => "12H"
+        "1440"  => "24H"
+        "1D"    => "D"
+        "1W"    => "W"
+        "1M"    => "M"
+        "12M"   => "Y"
+        => this
+
+    // Add spacing.
+    switch str.length(_str)
+        1 => _str + "   "
+        2 => _str + "     "
+        3 => _str + "       "
+
+
+// @function Create and update the open level. An open is composed of a label, a "body" line, and optional "tail" and "head" line extensions.
+// @returns  void
+drawOpen(bool change, Open openData, int lookback, color color, int padding) =>
+    // @variable The reference of the last open line.
+    var line _bodyLine = na
+
+    // @variable The reference of the last open label.
+    var label _label = label.new(
+         x         = na,
+         y         = na,
+         text      = openData.name,
+         style     = LABEL_STYLE,
+         textcolor = color,
+         size      = LABEL_SIZE
+         )
+
+    // @variable The reference of the last open left extending line.
+    var line _tailLine = line.new(
+         x1     = na,
+         y1     = na,
+         x2     = na,
+         y2     = na,
+         color  = color,
+         style  = TAIL_STYLE,
+         width  = LINE_WIDTH,
+         extend = extend.left
+         )
+
+    // @variable The collection of historical open lines.
+    var array<line> _bodyLineArray  = array.new_line()
+
+    // @variable The collection of historical right extending open lines.
+    var array<line> _headLineArray  = array.new_line()
+
+
+    // Update the old open and create the new open.
+
+    if change
+        int _x2 = getRightBarIndex()
+
+        // Anchor the previous open end position.
+        _bodyLine.set_x2(openData.barIndex -1)
+
+        // Create the previous open "head".
+        if enableHeadsInput
+            _headLineArray.push(
+                 line.new(
+                     x1    = openData.barIndex -1,
+                     x2    = openData.barIndex,
+                     y1    = _bodyLine.get_y1(),
+                     y2    = _bodyLine.get_y2(),
+                     color = color.new(color, HEAD_TRANSP),
+                     style = LINE_STYLE,
+                     width = LINE_WIDTH
+                     )
+                 )
+
+            // Trim the exceeding number of drawings.
+            if _headLineArray.size() > lookback -1
+                line.delete(_headLineArray.shift())
+
+        // Update the last open label position and tooltip.
+        _label.set_xy(_x2, openData.price)
+        _label.set_tooltip(str.tostring(openData.price, format.mintick))
+
+        // Create and store the last open line.
+        _bodyLine := line.new(
+             x1    = openData.barIndex,
+             x2    = _x2,
+             y1    = openData.price,
+             y2    = openData.price,
+             color = color,
+             style = LINE_STYLE,
+             width = LINE_WIDTH
+             )
+        array.push(_bodyLineArray, _bodyLine)
+
+        // Trim the exceeding number of drawings.
+        if _bodyLineArray.size() > lookback
+            line.delete(_bodyLineArray.shift())
+
+        // Create the last open "tail".
+        if enableTailsInput
+            _tailLine.set_xy1(openData.barIndex -1, openData.price)
+            _tailLine.set_xy2(openData.barIndex,    openData.price)
+
+
+    // Update the right position of the "body" and "heads" lines.
+
+    if barstate.islast
+        if enableHeadsInput
+            int _x2 = getRightBarIndex(HEAD_PADDING)
+            for _head in _headLineArray
+                _head.set_x2(_x2)
+
+        int _x2 = getRightBarIndex(padding)
+        _bodyLine.set_x2(_x2)
+        _label.set_x(_x2)
+
+
+// @function Get the padding to apply to the open right position for not overlapping the other open labels.
+// @returns  int
+method padding(array<Open> this, int idx, float proximityThreshold) =>
+    int _padding = 0
+
+    // Open #2, #3, #4, and #5 can share the same open with #1.
+    if idx > 0 and this.get(0).display and math.abs(this.get(0).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1
+
+    // Open #3, #4, and #5 can share the same open with #2.
+    if idx > 1 and this.get(1).display and math.abs(this.get(1).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1
+
+    // Open #4 and #5 can share the same open with #3.
+    if idx > 2 and this.get(2).display and math.abs(this.get(2).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1
+
+    // Open #5 can share the same open with #4.
+    if idx > 3 and this.get(3).display and math.abs(this.get(3).price - this.get(idx).price) <= proximityThreshold
+        _padding += 1    
+    
+    _padding
+
+
+// @function Update the open levels.
+// @returns  (bool) Is true if the open changes.
+update(
+     Open           data,
+     simple string  tf,
+     simple bool    extendedSession,
+     simple bool    discoverPrice,
+     simple bool    discoverExtendedPrice
+     ) =>
+
+    // @variable The `open` and `time` requested from the timeframe context.
+    [_tfTime, _tfOpen] = tf.request(extendedSession)
+
+    // @variable Is true when the timeframe changes.
+    bool _change = tf.change(_tfTime, discoverPrice, discoverExtendedPrice)
+
+    // @variable Is true when pinpointing the opening bar index on the previous bar.
+    bool _adjust = adjustStartBarIndex(_tfTime)
+
+    // @variable Is true when sourcing the opening price from the chart context.
+    bool _discovery = discoverPrice or discoverExtendedPrice
+
+    if _change
+        data.price    := _discovery ? open : _tfOpen
+        data.barIndex := _discovery ? bar_index : (_adjust ? bar_index -1 : bar_index)
+        
+    _change
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                 Variables declarations
+//--------------------------------------------------------------------
+
+// @variable The `timeframe` parameters produced from the enum input selections.
+var string timeframe1 = openTimeframeInput1.param()
+var string timeframe2 = openTimeframeInput2.param()
+var string timeframe3 = openTimeframeInput3.param()
+var string timeframe4 = openTimeframeInput4.param()
+var string timeframe5 = openTimeframeInput5.param()
+
+
+// @variable Are true when we can display the opens on the chart.
+var simple bool display1 = enableOpenInput1 and timeframe1.isVisible()
+var simple bool display2 = enableOpenInput2 and timeframe2.isVisible()
+var simple bool display3 = enableOpenInput3 and timeframe3.isVisible()
+var simple bool display4 = enableOpenInput4 and timeframe4.isVisible()
+var simple bool display5 = enableOpenInput5 and timeframe5.isVisible()
+
+
+// @variable Are true when sourcing the open prices from the chart instead of the requested timeframe context.
+var simple bool discoverPrice1 = discoverPrice(timeframe1, discoverPricesInput)
+var simple bool discoverPrice2 = discoverPrice(timeframe2, discoverPricesInput)
+var simple bool discoverPrice3 = discoverPrice(timeframe3, discoverPricesInput)
+var simple bool discoverPrice4 = discoverPrice(timeframe4, discoverPricesInput)
+var simple bool discoverPrice5 = discoverPrice(timeframe5, discoverPricesInput)
+
+
+// @variable Is true when we should plot the opens on the extended trading hours.
+var simple bool extendedSession = enableExtendedSessionInput and syminfo.session == session.extended
+
+
+// @variable Are true when we should source the open prices from the chart instead of the requested timeframe context.
+var simple bool discoverExtendedPrice1 = discoverExtendedPrice(timeframe1, extendedSession)
+var simple bool discoverExtendedPrice2 = discoverExtendedPrice(timeframe2, extendedSession)
+var simple bool discoverExtendedPrice3 = discoverExtendedPrice(timeframe3, extendedSession)
+var simple bool discoverExtendedPrice4 = discoverExtendedPrice(timeframe4, extendedSession)
+var simple bool discoverExtendedPrice5 = discoverExtendedPrice(timeframe5, extendedSession)
+
+
+// @variable The `Open` UDTs. 
+var Open open1 = Open.new(name = timeframe1.displayString(), display = display1)
+var Open open2 = Open.new(name = timeframe2.displayString(), display = display2)
+var Open open3 = Open.new(name = timeframe3.displayString(), display = display3)
+var Open open4 = Open.new(name = timeframe4.displayString(), display = display4)
+var Open open5 = Open.new(name = timeframe5.displayString(), display = display5)
+
+
+// @variable The collection of last `Open`. 
+var array<Open> openArray = array.from(open1, open2, open3, open4, open5)
+
+
+// @variable The maximum distance to determine if two levels overlap each other.
+float proximityPaddingThreshold = ta.atr(10) /2
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                         Logic
+//--------------------------------------------------------------------
+
+bool change1 = if display1
+    update(open1, timeframe1, extendedSession, discoverPrice1, discoverExtendedPrice1)
+
+
+bool change2 = if display2
+    update(open2, timeframe2, extendedSession, discoverPrice2, discoverExtendedPrice2)
+
+
+bool change3 = if display3
+    update(open3, timeframe3, extendedSession, discoverPrice3, discoverExtendedPrice3)
+
+
+bool change4 = if display4
+    update(open4, timeframe4, extendedSession, discoverPrice4, discoverExtendedPrice4)
+
+
+bool change5 = if display5
+    update(open5, timeframe5, extendedSession, discoverPrice5, discoverExtendedPrice5)
+
+//#endregion
+
+
+//--------------------------------------------------------------------
+//#region                        Visuals
+//--------------------------------------------------------------------
+
+//#region - Draw the open levels.
+
+if display5
+    drawOpen(
+         change5,
+         open5,
+         openLookbackInput5,
+         openColorInput5,
+         barstate.islast ? openArray.padding(4, proximityPaddingThreshold) : 0
+         )
+
+
+if display4
+    drawOpen(
+         change4,
+         open4,
+         openLookbackInput4,
+         openColorInput4,
+         barstate.islast ? openArray.padding(3, proximityPaddingThreshold) : 0
+         )
+
+
+if display3
+    drawOpen(
+         change3,
+         open3,
+         openLookbackInput3,
+         openColorInput3,
+         barstate.islast ? openArray.padding(2, proximityPaddingThreshold) : 0
+         )
+
+
+if display2
+    drawOpen(
+         change2,
+         open2,
+         openLookbackInput2,
+         openColorInput2,
+         barstate.islast ? openArray.padding(1, proximityPaddingThreshold) : 0
+         )
+
+
+if display1
+    drawOpen(
+         change1,
+         open1,
+         openLookbackInput1,
+         openColorInput1,
+         0
+         )
+
+//#endregion
+
+
+//#endregion-
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © LuxAlgo
+
+//------------------------------------------------------------------------------
+//Settings
+//-----------------------------------------------------------------------------{
+length = input.int(3, 'Pivot Lookback', minval = 2)
+
+// Auto-detect SMT correlation symbols based on current chart ticker
+get_auto_smt_symbols() =>
+    string s1 = ""
+    string s2 = ""
+    string t = str.upper(syminfo.ticker)
+    if str.contains(t, "NQ") or str.contains(t, "MNQ")
+        s1 := "CME_MINI_DL:ES1!"
+        s2 := "CBOT_MINI_DL:YM1!"
+    else if str.contains(t, "ES") or str.contains(t, "MES")
+        s1 := "CME_MINI_DL:NQ1!"
+        s2 := "CBOT_MINI_DL:YM1!"
+    else if str.contains(t, "YM") or str.contains(t, "MYM")
+        s1 := "CME_MINI_DL:ES1!"
+        s2 := "CME_MINI_DL:NQ1!"
+    else if str.contains(t, "RTY") or str.contains(t, "M2K") or str.contains(t, "RUT")
+        s1 := "CME_MINI_DL:ES1!"
+        s2 := "CME_MINI_DL:NQ1!"
+    else if str.contains(t, "BTC")
+        s1 := "ETHUSDT"
+        s2 := "ETHUSD"
+    else if str.contains(t, "ETH")
+        s1 := "BTCUSDT"
+        s2 := "BTCUSD"
+    else if str.contains(t, "EURUSD") or str.contains(t, "6E")
+        s1 := "GBPUSD"
+        s2 := "DXY"
+    else if str.contains(t, "GBPUSD") or str.contains(t, "6B")
+        s1 := "EURUSD"
+        s2 := "DXY"
+    else if str.contains(t, "DXY") or str.contains(t, "DX")
+        s1 := "EURUSD"
+        s2 := "GBPUSD"
+    else if str.contains(t, "XAU") or str.contains(t, "GOLD") or str.contains(t, "GC") or str.contains(t, "MGC")
+        s1 := "XAGUSD"
+        s2 := "DXY"
+    else if str.contains(t, "XAG") or str.contains(t, "SILVER") or str.contains(t, "SI") or str.contains(t, "MSI")
+        s1 := "XAUUSD"
+        s2 := "DXY"
+    else
+        s1 := "CME_MINI_DL:ES1!"
+        s2 := "CBOT_MINI_DL:YM1!"
+    [s1, s2]
+
+autoSmtSymbols = input.bool(true, 'Auto SMT Symbols', group = 'SMT Settings', tooltip = 'Auto detect correlated assets based on current chart (ES/NQ/YM, BTC/ETH, Forex, etc.)')
+
+//Symbol A
+useSym1    = input(true, 'Comparison Symbol A', inline = 'symA')
+manualSym1 = input.symbol('CME_MINI_DL:ES1!', '', inline = 'symA')
+
+//Symbol B
+useSym2    = input(true, 'Comparison Symbol B', inline = 'symB')
+manualSym2 = input.symbol('CBOT_MINI_DL:YM1!', '', inline = 'symB')
+
+[auto_s1, auto_s2] = get_auto_smt_symbols()
+sym1 = autoSmtSymbols ? auto_s1 : manualSym1
+sym2 = autoSmtSymbols ? auto_s2 : manualSym2
+
+//Style
+bullDivCss = input.color(#000000, 'Swing High', group = 'Style')
+bearDivCss = input.color(#000000, 'Swing Low', group = 'Style')
+
+//Dashboard
+showDash = input(false, 'Show Dashboard'                                                               , group = 'Dashboard')
+dashLoc  = input.string('Top Right', 'Location', options = ['Top Right', 'Bottom Right', 'Bottom Left'], group = 'Dashboard')
+textSize = input.string('Small', 'Size'        , options = ['Tiny', 'Small', 'Normal']                 , group = 'Dashboard')
+
+//-----------------------------------------------------------------------------}
+//Function
+//-----------------------------------------------------------------------------{
+n = bar_index
+
+get_hl() => [open, high, low, close]
+
+//Swing highs divergences
+get_divergence(ph, y2, sym_y2, css)=>
+    var float y1 = na
+    var float sym_y1 = na
+    var int x1 = na
+    var smt = 0
+
+    if y2 != y2[1] and sym_y2 != sym_y2[1] 
+        //Test for SMT
+        if (y2 - y1) * (sym_y2 - sym_y1) < 0
+            line.new(n[length], y2, x1, y1, color = css)
+
+            smt += 1
+        
+        sym_y1 := sym_y2
+        y1 := y2
+        x1 := n[length]
+    else if (ph and y2 > y2[1]) or (not ph and y2 < y2[1]) 
+        sym_y1 := na
+        y1 := y2
+        x1 := n[length]
+    
+    smt
+
+//-----------------------------------------------------------------------------}
+//Main variables
+//-----------------------------------------------------------------------------{
+var phN = 0, var plN = 0
+var ph_smt1 = 0.
+var pl_smt1 = 0.
+var ph_smt2 = 0.
+var pl_smt2 = 0.
+
+smt_ticker1 = syminfo.ticker(sym1)
+smt_ticker2 = syminfo.ticker(sym2)
+
+//-----------------------------------------------------------------------------}
+//Detect swing highs/lows and divergences
+//-----------------------------------------------------------------------------{
+ph = fixnan(ta.pivothigh(length, length))
+pl = fixnan(ta.pivotlow(length, length))
+phN += ph != ph[1] ? 1 : 0
+plN += pl != pl[1] ? 1 : 0
+
+//Comparison symbol pivots & true open price
+[o1, h1, l1, c1] = request.security(sym1, timeframe.period, get_hl())
+[o2, h2, l2, c2] = request.security(sym2, timeframe.period, get_hl())
+
+//Detect swing high divergences
+if useSym1
+    sym_ph1 = fixnan(ta.pivothigh(h1, length, length))
+    sym_pl1 = fixnan(ta.pivotlow(l1, length, length))
+
+    ph_smt1 := get_divergence(true, ph, sym_ph1, bullDivCss)
+    pl_smt1 := get_divergence(false, pl, sym_pl1, bearDivCss)
+
+if useSym2
+    sym_ph2 = fixnan(ta.pivothigh(h2, length, length))
+    sym_pl2 = fixnan(ta.pivotlow(l2, length, length))
+    
+    ph_smt2 := get_divergence(true, ph, sym_ph2, bullDivCss)
+    pl_smt2 := get_divergence(false, pl, sym_pl2, bearDivCss)
+
+txt = ''
+if ph != ph[1]
+    if ph_smt1 > ph_smt1[1]
+        txt += smt_ticker1
+    if ph_smt2 > ph_smt2[1]
+        txt += txt != '' ? ' | ' : ''
+        txt += smt_ticker2
+
+    if txt != ''
+        label.new(n[length], ph, txt
+          , color = bullDivCss
+          , style = label.style_label_down
+          , textcolor = color.white
+          , size = size.tiny)
+else
+    if pl_smt1 > pl_smt1[1]
+        txt += smt_ticker1
+    if pl_smt2 > pl_smt2[1]
+        txt += txt != '' ? ' | ' : ''
+        txt += smt_ticker2
+
+    if txt != ''
+        label.new(n[length], pl, txt
+          , color = bearDivCss
+          , style = label.style_label_up
+          , textcolor = color.white
+          , size = size.tiny)
+    
+//-----------------------------------------------------------------------------}
+//Tables
+//-----------------------------------------------------------------------------{
+var table_position = dashLoc == 'Bottom Left' ? position.bottom_left 
+  : dashLoc == 'Top Right' ? position.top_right 
+  : position.bottom_right
+
+var table_size = textSize == 'Tiny' ? size.tiny 
+  : textSize == 'Small' ? size.small 
+  : size.normal
+
+var tb = table.new(table_position, 3, 3
+  , bgcolor = #1e222d
+  , border_color = #373a46
+  , border_width = 1
+  , frame_color = #373a46
+  , frame_width = 1)
+
+if barstate.isfirst and showDash
+    tb.cell(1, 0, 'Swing High', text_color = color.white)
+    tb.cell(2, 0, 'Swing Low', text_color = color.white)
+    
+    tb.cell(0, 1, smt_ticker1, text_color = color.white)
+    tb.cell(0, 2, smt_ticker2, text_color = color.white)
+
+if barstate.islast and showDash
+    //Symbol 1
+    tb.cell(1, 1, str.format('{0} ({1, number, percent})', ph_smt1, ph_smt1 / phN)
+      , text_color = bullDivCss)
+    tb.cell(2, 1, str.format('{0} ({1, number, percent})', pl_smt1, pl_smt1 / plN)
+      , text_color = bearDivCss)
+    
+    //Symbol 2
+    tb.cell(1, 2, str.format('{0} ({1, number, percent})', ph_smt2, ph_smt2 / phN)
+      , text_color = bullDivCss)
+    tb.cell(2, 2, str.format('{0} ({1, number, percent})', pl_smt2, pl_smt2 / plN)
+      , text_color = bearDivCss)
+
+//-----------------------------------------------------------------------------}
+
+//========================
+// Inputs
+//========================
+bullishBreakColor = input.color(color.black, "Bullish", inline = "bup")
+bearishBreakColor = input.color(color.black, "Bearish", inline = "bep")
+
+bullStr = input.string("CISD", " ", tooltip = "Text to be displayed next to the bullish CISD level.", inline = "bup")
+bearStr = input.string("CISD", " ", tooltip = "Text to be displayed next to the bearish CISD level.", inline = "bep")
+
+// Fixed settings (no user inputs)
+lineWidth     = 1
+lookAheadBars = 5
+lineStyle     = line.style_solid
+keepLevels    = false
+
+//========================
+// Helpers (Body-only)
+//========================
+bodyHigh(offset) =>
+    math.max(open[offset], close[offset])
+
+bodyLow(offset) =>
+    math.min(open[offset], close[offset])
+
+bodySize(offset) =>
+    math.abs(close[offset] - open[offset])
+
+//========================
+// Types
+//========================
+type MarketStructure
+    float topPrice
+    float bottomPrice
+    bool  isBullish
+
+type cisd
+    line level
+    label txt
+    bool completed
+
+//========================
+// Vars
+//========================
+var line lastTopLine    = na
+var line lastBottomLine = na
+
+// init market structure with BODY extremes, not wicks
+var MarketStructure currentStructure = MarketStructure.new(math.max(open, close), math.min(open, close), close >= open)
+
+var cisdLevelsBu = array.new<cisd>()  // bullish CISD levels (below price usually)
+var cisdLevelsBe = array.new<cisd>()  // bearish CISD levels (above price usually)
+
+var bool  isBullishPullback   = false
+var bool  isBearishPullback   = false
+
+var float potentialTopPrice    = na   // taken from opens (body)
+var float potentialBottomPrice = na   // taken from opens (body)
+
+var int   bullishBreakIndex   = na
+var int   bearishBreakIndex   = na
+
+var bool  currentState        = false  // false = bearish, true = bullish
+
+//========================
+// Pullback Detection (body-based, with size filter)
+//========================
+
+// minimum size of pullback body vs previous body (hardcoded: 50%)
+minPullbackRatio = 0.5
+
+pullbackBody = bodySize(1)
+prevBody     = bodySize(2)
+validPullback = prevBody > 0 and pullbackBody >= minPullbackRatio * prevBody
+
+// green body = bearish pullback, red body = bullish pullback, only if big enough
+bearishPullbackDetected = validPullback and close[1] > open[1]
+bullishPullbackDetected = validPullback and close[1] < open[1]
+
+// Bearish Pullback Logic
+if bearishPullbackDetected and not isBearishPullback
+    isBearishPullback := true
+    potentialTopPrice := open[1]       // body-based anchor
+    bullishBreakIndex := bar_index[1]
+
+// Bullish Pullback Logic
+if bullishPullbackDetected and not isBullishPullback
+    isBullishPullback    := true
+    potentialBottomPrice := open[1]    // body-based anchor
+    bearishBreakIndex    := bar_index[1]
+
+// Update Potential Levels During Pullbacks (body only)
+if isBullishPullback
+    // New lower body → update bottom anchor
+    if open < potentialBottomPrice
+        potentialBottomPrice := open
+        bearishBreakIndex    := bar_index
+    // Red candle with higher open than current bottom → shift anchor to that open
+    if (close < open) and (open > potentialBottomPrice)
+        potentialBottomPrice := open
+        bearishBreakIndex    := bar_index     
+
+if isBearishPullback
+    // New higher open → update top anchor
+    if open > potentialTopPrice
+        potentialTopPrice := open
+        bullishBreakIndex := bar_index
+    // Green candle with lower open than current top → shift anchor to that open
+    if (close > open) and open < potentialTopPrice
+        potentialTopPrice := open
+        bullishBreakIndex := bar_index      
+
+//========================
+// Structure Updates - Bearish Break (BODY ONLY)
+//========================
+if bodyLow(0) < currentStructure.bottomPrice
+    currentStructure.bottomPrice := bodyLow(0)
+    currentStructure.isBullish   := false
+    
+    if isBearishPullback and (bar_index - bullishBreakIndex != 0)
+        idxBack  = bar_index - bullishBreakIndex
+        idxBack1 = idxBack + 1
+        top1 = bodyHigh(idxBack)
+        top2 = bodyHigh(idxBack1)
+        currentStructure.topPrice := math.max(top1, top2)
+
+        isBearishPullback := false
+
+        bearishLine  = line.new(bullishBreakIndex, potentialTopPrice, bar_index + lookAheadBars, potentialTopPrice, color = bullishBreakColor, width = lineWidth, style = lineStyle)
+        bearishLabel = label.new(bar_index + lookAheadBars, potentialTopPrice, bullStr, color = color.new(color.white, 100), textcolor = bullishBreakColor, style = label.style_label_left, text_font_family = font.family_default, size = size.small, text_formatting = text.format_italic)
+        b = cisd.new(bearishLine, bearishLabel, false)
+        array.push(cisdLevelsBe, b)
+    else if close[1] > open[1] and close < open
+        currentStructure.topPrice := bodyHigh(1)
+        isBearishPullback := false
+
+        bearishLine  = line.new(bullishBreakIndex, potentialTopPrice, bar_index + lookAheadBars, potentialTopPrice, color = bullishBreakColor, width = lineWidth, style = lineStyle)
+        bearishLabel = label.new(bar_index + lookAheadBars, potentialTopPrice, bullStr, color = color.new(color.white, 100), textcolor = bullishBreakColor, style = label.style_label_left, text_font_family = font.family_default, size = size.small, text_formatting = text.format_italic)
+        b = cisd.new(bearishLine, bearishLabel, false)
+        array.push(cisdLevelsBe, b)
+
+//========================
+// Structure Updates - Bullish Break (BODY ONLY)
+//========================
+if bodyHigh(0) > currentStructure.topPrice
+    currentStructure.isBullish := true
+    currentStructure.topPrice  := bodyHigh(0)
+    
+    if isBullishPullback and (bar_index - bearishBreakIndex != 0)
+        idxBack  = bar_index - bearishBreakIndex
+        idxBack1 = idxBack + 1
+        bot1 = bodyLow(idxBack)
+        bot2 = bodyLow(idxBack1)
+        currentStructure.bottomPrice := math.min(bot1, bot2)
+
+        isBullishPullback := false
+
+        bullishLine  = line.new(bearishBreakIndex, potentialBottomPrice, bar_index + lookAheadBars, potentialBottomPrice, color = bearishBreakColor, width = lineWidth, style = lineStyle)
+        bullishLabel = label.new(bar_index + lookAheadBars, potentialBottomPrice, bearStr, color = color.new(color.white, 100), textcolor = bearishBreakColor, style = label.style_label_left, text_font_family = font.family_default, size = size.small, text_formatting = text.format_italic)
+        bu = cisd.new(bullishLine, bullishLabel, false)
+        array.push(cisdLevelsBu, bu)
+    else if close[1] < open[1] and close > open
+        currentStructure.bottomPrice := bodyLow(1)
+        isBullishPullback := false
+
+        bullishLine  = line.new(bearishBreakIndex, potentialBottomPrice, bar_index + lookAheadBars, potentialBottomPrice, color = bearishBreakColor, width = lineWidth, style = lineStyle)
+        bullishLabel = label.new(bar_index + lookAheadBars, potentialBottomPrice, bearStr, color = color.new(color.white, 100), textcolor = bearishBreakColor, style = label.style_label_left, text_font_family = font.family_default, size = size.small, text_formatting = text.format_italic)
+        bu = cisd.new(bullishLine, bullishLabel, false)
+        array.push(cisdLevelsBu, bu)
+
+//========================
+// Level cleanup (keep latest only)
+//========================
+if array.size(cisdLevelsBu) > 1 and not keepLevels
+    oldestBu = array.shift(cisdLevelsBu)
+    line.delete(oldestBu.level)
+    label.delete(oldestBu.txt)
+
+if array.size(cisdLevelsBe) > 1 and not keepLevels
+    oldestBe = array.shift(cisdLevelsBe)
+    line.delete(oldestBe.level)
+    label.delete(oldestBe.txt)
+
+//========================
+// Manage bullish CISD (below price)
+//========================
+if array.size(cisdLevelsBu) >= 1
+    latestBuIndex = array.size(cisdLevelsBu) - 1
+    latestBu      = array.get(cisdLevelsBu, latestBuIndex)
+
+    // As long as body low is not below CISD, extend the line
+    if not (bodyLow(0) < latestBu.level.get_y2()) and not latestBu.completed
+        line.set_x2(latestBu.level, bar_index + lookAheadBars)
+        label.set_x(latestBu.txt, bar_index + lookAheadBars)
+
+    // Break: body low closes below CISD
+    if bodyLow(0) < latestBu.level.get_y2() and not latestBu.completed
+        latestBu.completed := true
+        array.set(cisdLevelsBu, latestBuIndex, latestBu)
+
+        // Spawn new bearish CISD from current top anchor
+        bearishLine  = line.new(bullishBreakIndex, potentialTopPrice, bar_index + lookAheadBars, potentialTopPrice, color = bullishBreakColor, width = lineWidth, style = lineStyle)
+        bearishLabel = label.new(bar_index + lookAheadBars, potentialTopPrice, bullStr, color = color.new(color.white, 100), textcolor = bullishBreakColor, style = label.style_label_left, text_font_family = font.family_monospace, size = size.small, text_formatting = text.format_italic)
+        b = cisd.new(bearishLine, bearishLabel, false)
+        array.push(cisdLevelsBe, b)
+
+        currentState := false
+
+//========================
+// Manage bearish CISD (above price)
+//========================
+if array.size(cisdLevelsBe) >= 1
+    latestBeIndex = array.size(cisdLevelsBe) - 1
+    latestBe      = array.get(cisdLevelsBe, latestBeIndex)
+
+    // As long as body high is not above CISD, extend the line
+    if not (bodyHigh(0) > latestBe.level.get_y2()) and not latestBe.completed
+        line.set_x2(latestBe.level, bar_index + lookAheadBars)
+        label.set_x(latestBe.txt, bar_index + lookAheadBars)
+
+    // Break: body high closes above CISD
+    if bodyHigh(0) > latestBe.level.get_y2() and not latestBe.completed
+        latestBe.completed := true
+        array.set(cisdLevelsBe, latestBeIndex, latestBe)
+
+        // Spawn new bullish CISD from current bottom anchor
+        bullishLine  = line.new(bearishBreakIndex, potentialBottomPrice, bar_index + lookAheadBars, potentialBottomPrice, color = bearishBreakColor, width = lineWidth, style = lineStyle)
+        bullishLabel = label.new(bar_index + lookAheadBars, potentialBottomPrice, bearStr, color = color.new(color.white, 100), textcolor = bearishBreakColor, style = label.style_label_left, text_font_family = font.family_monospace, size = size.small, text_formatting = text.format_italic)
+        bu = cisd.new(bullishLine, bullishLabel, false)
+        array.push(cisdLevelsBu, bu)
+
+        currentState := true
